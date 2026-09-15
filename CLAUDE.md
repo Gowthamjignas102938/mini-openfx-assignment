@@ -50,73 +50,95 @@ first.
 
 ## Working agreement — how to operate in this project
 
-The person building this is a beginner, learning deliberately and slowly, and
-explicitly asked for **attempt-first** mode. This is not a preference to
-politely nod at — it changes what you should actually do:
+> **MODE CHANGE (2026-09-15):** attempt-first is over. Claude now writes the
+> real implementations directly instead of handing over tasks. The reason for
+> attempt-first hasn't gone away, though — the person still wants to deeply
+> understand this project — so the teaching obligation moves to explanation:
+> every module still gets a plain-language walkthrough of what was built and
+> why, at the point it's built, not deferred to the end. Rules 1 and 5–7 below
+> still apply in full; rules 2–4 (hand over the task, don't write whole files
+> unprompted) are superseded — writing whole files/modules directly is now the
+> default, not a fallback.
 
 1. **Explain the concept before any code** — plain language, define new terms
    as they come up, assume nothing is obvious.
-2. **Hand over a task, not a solution, by default.** Describe what a file
-   needs to do, its interface, the requirements — and let the person write
-   the actual implementation themselves in their editor.
-3. **Do not generate whole files or apply large edits unprompted.** If asked
-   to "just fix it," prefer the smallest possible change, and still explain
-   it — see point 5.
-4. **A fallback is fine when the person is stuck** — but say so explicitly
-   ("here's the fallback"), and still explain why it works afterward, so even
-   the fallback teaches something.
-5. **Whenever you do write or change code, explain exactly what changed and
+2. ~~Hand over a task, not a solution, by default.~~ **Superseded by the mode
+   change above** — Claude now implements modules directly.
+3. ~~Do not generate whole files or apply large edits unprompted.~~
+   **Superseded** — whole files/modules are written directly now.
+4. ~~A fallback is fine when the person is stuck.~~ **Moot** — there's no
+   attempt to fall back from anymore.
+5. **Whenever code is written or changed, explain exactly what changed and
    why, in plain terms a beginner can follow** — not a terse diff summary.
    Assume the person will be asked to explain this code later and needs to
-   actually understand it, not just have it work.
+   actually understand it, not just have it work. This is the load-bearing
+   rule post-mode-change: it's the entire mechanism by which the person still
+   learns the project.
 6. **When something breaks, walk through the diagnosis out loud** — what the
    error actually means, what it rules in/out, before stating the fix.
-7. Prefer small, reviewable, one-thing-at-a-time increments over big
-   multi-file rewrites.
+7. **Build and commit one module at a time**, in order, with its own
+   explanation and its own commit — never a giant multi-module rewrite in one
+   pass. Update "Current status" below as each module actually lands, so this
+   file stays accurate without needing to be relayed back from Claude chat.
 
 ## Current status
 
-Last updated from the planning conversation on 2026-09-14.
+Last updated by Claude, 2026-09-15, after the Module 8 audit and the
+mode change to direct implementation.
 
 - **Module 00 (orientation/product thinking): done.** Scope decisions above
   are final.
-- **Module 01 (environment/tooling): done.** Repo initialized, `.gitignore`
-  in place, connected to GitHub (`github.com/gowthamjignas1029/mini-openfx`),
-  first commit pushed to `main`.
-- **Module 02 (NestJS foundations): in progress.**
-  - Project scaffolded via `nest new . --skip-git` — this scaffold turned out
-    to include NestJS's native Observe SDK (`@nestjs/observe`) wired into
-    `main.ts` via an `instrument: ObserveInstrument` option, auto-included by
-    the CLI. This is **not wanted** for this project (irrelevant to the
-    assignment, was failing with `Telemetry rejected (401)` since no real
-    API key was ever configured) and should be fully removed, not fixed.
-  - `main.ts` has already been edited once to drop the `ObserveInstrument`
-    import/usage — **verify this actually took effect** with a clean
-    terminal restart (`Ctrl+C`, `clear`, `npm run start:dev` again) before
-    assuming it's resolved; last report from the person was that the
-    telemetry error line was still visible, which may just be stale terminal
-    scrollback rather than a real recurrence. Also check `package.json` for
-    an `@nestjs/observe` dependency and `nest-cli.json` for any plugin
-    referencing it, in case something beyond `main.ts` is still wiring it in.
-  - A hand-written `RatesModule` (`src/rates/{rates.module,rates.controller,
-    rates.service}.ts`) exists as a throwaway learning exercise — a
-    placeholder `GET /rates/hello` endpoint — and was verified correctly
-    wired into `app.module.ts`'s `imports` array. This module is **not**
-    part of the real product; it can be deleted once its teaching purpose
-    (understanding modules/controllers/services/DI) is served, before
-    building the real `PricesModule` in Module 05.
-- **Modules 03–14: not started.** Full roadmap, glossary, and resource links
-  live in the published field guide (an artifact from the planning
-  conversation) — ask the person for the link if it's needed and not
-  already available in this session's context.
+- **Module 01 (environment/tooling): done.** Repo initialized, connected to
+  GitHub (`github.com/Gowthamjignas102938/mini-openfx`).
+- **Module 02 (NestJS foundations): done.** Observe SDK fully removed
+  (confirmed gone from `main.ts`, `package.json`, and `nest-cli.json`;
+  `npm run start:dev` boots with zero errors). `RatesModule`
+  (`GET /rates/hello`) is still present — its teaching purpose has been
+  served and it's safe to delete; not yet done, low priority cleanup.
+- **Module 03/04 (database): done.** Postgres via Docker (isolated
+  container/port/volume), Drizzle schema (`balances`, `trades`), migration
+  applied to a real database, idempotent seed script
+  (`onConflictDoNothing`). Verified end-to-end.
+- **Module 05/06 (prices + Redis cache): done.** `GET /prices` fetches
+  Binance bid/ask, cached in Redis with a 15s TTL (cache-aside) — this TTL
+  *is* the mechanism behind the project's price-validity rule. Upstream
+  failures map to 400 (bad symbol)/502 (unreachable or malformed), never a
+  bare 500. Verified: repeat calls inside the window return an identical
+  cached timestamp; `TTL` on the key reads exactly 15.
+- **Module 07 (balances): done.** `GET /balances`, `GET /balances/:currency`
+  (404 on unknown currency).
+- **Module 08 (trades): done, re-audited 2026-09-15.** `POST /trades` calls
+  `PricesService.getCachedPriceOnly()` (Redis-only, never calls Binance;
+  409 on a cache miss), then executes debit + credit + trade-insert inside
+  one `db.transaction()`. Re-verified live after the audit: cache-miss still
+  409s, a real trade moves exact amounts and inserts a correct row,
+  insufficient funds still rolls back completely (checked directly against
+  the database, not just the HTTP response).
+- **Module 09 (trade history): not started.** `GET /trades` — required by
+  the brief, currently missing.
+- **Module 10 (versioning/errors/validation): not started.** No
+  `class-validator`/`ValidationPipe` yet — `POST /trades`'s body is just a
+  TypeScript interface, so a malformed request throws unhandled rather than
+  a clean 400. No API versioning (`/v1/...`) yet either.
+- **Module 11 (testing): not started.** Vitest is installed; nothing
+  written. Note: the brief's locked-in stack says Jest, but the actual
+  scaffold shipped with Vitest — flagged, not yet resolved either way.
+- **Module 12 (CI/CD): not started.** No GitHub Actions workflow.
+- **Module 13 (docs/demo/deployment): not started.** No README yet; no
+  Loom video; no deployment.
+- **Module 14 (React + Tailwind frontend): explicitly deferred.** Bonus
+  only, after 00–13 are solid — do not start this without being asked.
+
+A living project overview (architecture, data model, the 15s-expiry
+mechanism, trade-offs) is maintained in Notion — ask the person for the
+link if it's not already in context, rather than assuming it's stale.
 
 ## First thing to do in a new session
 
 Don't assume the above is still accurate. Inspect the actual repo (file
-tree, `git log`, `package.json`, `nest-cli.json`, and the contents of `src/`)
-and reconcile reality against "Current status" above before doing anything
-else. Report back, in plain language: what's actually implemented and
-working right now, what's implemented but possibly broken, and what genuinely
-hasn't been started — specifically confirm whether `npm run start:dev` boots
-cleanly with no Observe-related error, and whether `GET /` and
-`GET /rates/hello` both respond correctly.
+tree, `git log`, `package.json`, and the contents of `src/`) and reconcile
+reality against "Current status" above before doing anything else — this
+project has already had cases this session where a file was believed
+changed/saved but wasn't. Report back, in plain language, what's actually
+implemented and verified, what's implemented but unverified, and what
+genuinely hasn't been started.
