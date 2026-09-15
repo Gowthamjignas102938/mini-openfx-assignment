@@ -1,5 +1,6 @@
 import { Injectable, ConflictException, BadRequestException } from '@nestjs/common';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
+import { Decimal } from 'decimal.js';
 import { db } from '../db/index.js';
 import { balances, trades } from '../db/schema.js';
 import { PricesService } from '../prices/prices.service.js';
@@ -25,38 +26,52 @@ export class TradesService {
       );
     }
 
-    const toAmount = fromAmount * price.bid;
+    const fromAmountDecimal = new Decimal(fromAmount);
+    const toAmountDecimal = fromAmountDecimal.times(price.bid);
 
     return db.transaction(async (tx) => {
-      const [fromBalance] = await tx
+      // Lock both balance rows together, in one statement, in a fixed
+      // (alphabetical-by-currency) order — not the from/to order, which
+      // flips depending on trade direction. Two concurrent trades on the
+      // same currency pair in opposite directions (e.g. USD->INR and
+      // INR->USD) would deadlock if each locked its own "from" currency
+      // first; locking in a currency-code order that's the same regardless
+      // of direction means every transaction touching this pair always
+      // requests the locks in the same sequence, so there's no circular
+      // wait. This single locked read also replaces the old two-separate-
+      // reads pattern that let the same-currency bug happen in the first
+      // place (reading toBalance before writing fromBalance) — both rows
+      // are read and locked together, before either is written.
+      const [currencyA, currencyB] = [fromCurrency, toCurrency].sort();
+      const lockedBalances = await tx
         .select()
         .from(balances)
-        .where(eq(balances.currency, fromCurrency));
+        .where(inArray(balances.currency, [currencyA, currencyB]))
+        .orderBy(balances.currency)
+        .for('update');
+
+      const fromBalance = lockedBalances.find((b) => b.currency === fromCurrency);
+      const toBalance = lockedBalances.find((b) => b.currency === toCurrency);
 
       if (!fromBalance) {
         throw new BadRequestException(`Unknown currency "${fromCurrency}"`);
       }
-
-      const currentFromAmount = Number(fromBalance.amount);
-      if (currentFromAmount < fromAmount) {
-        throw new BadRequestException(
-          `Insufficient ${fromCurrency} balance: have ${currentFromAmount}, need ${fromAmount}`,
-        );
-      }
-
-      const [toBalance] = await tx
-        .select()
-        .from(balances)
-        .where(eq(balances.currency, toCurrency));
-
       if (!toBalance) {
         throw new BadRequestException(`Unknown currency "${toCurrency}"`);
       }
 
+      const currentFromAmount = new Decimal(fromBalance.amount);
+      if (currentFromAmount.lessThan(fromAmountDecimal)) {
+        throw new BadRequestException(
+          `Insufficient ${fromCurrency} balance: have ${currentFromAmount}, need ${fromAmountDecimal}`,
+        );
+      }
+      const currentToAmount = new Decimal(toBalance.amount);
+
       await tx
         .update(balances)
         .set({
-          amount: String(currentFromAmount - fromAmount),
+          amount: currentFromAmount.minus(fromAmountDecimal).toFixed(6),
           updatedAt: new Date(),
         })
         .where(eq(balances.currency, fromCurrency));
@@ -64,7 +79,7 @@ export class TradesService {
       await tx
         .update(balances)
         .set({
-          amount: String(Number(toBalance.amount) + toAmount),
+          amount: currentToAmount.plus(toAmountDecimal).toFixed(6),
           updatedAt: new Date(),
         })
         .where(eq(balances.currency, toCurrency));
@@ -74,9 +89,9 @@ export class TradesService {
         .values({
           fromCurrency,
           toCurrency,
-          fromAmount: String(fromAmount),
-          toAmount: String(toAmount),
-          rate: String(price.bid),
+          fromAmount: fromAmountDecimal.toFixed(6),
+          toAmount: toAmountDecimal.toFixed(6),
+          rate: new Decimal(price.bid).toFixed(8),
         })
         .returning();
 
