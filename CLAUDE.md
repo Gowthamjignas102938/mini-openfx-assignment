@@ -135,7 +135,14 @@ mode change to direct implementation.
   against the real Postgres container, since transaction/atomicity is
   exactly what's under test) + 1 e2e test via supertest
   (`npm run test:e2e`). `npm run typecheck` added. All green.
-- **Module 12 (CI/CD): not started.** No GitHub Actions workflow.
+- **Module 12 (CI/CD): done.** `.github/workflows/ci.yml`: Postgres +
+  Redis as service containers, then npm ci → lint → typecheck → build →
+  migrate → seed → unit/integration tests → e2e tests. Simulating this
+  locally first (fresh throwaway containers, no `.env`, real env vars)
+  caught a real bug — test fixtures used `.update()`, a silent no-op on
+  an unseeded database — fixed to `onConflictDoUpdate` (upsert). Pushed
+  and confirmed genuinely green on GitHub Actions (run 34938582400, all
+  green in 46s), not just locally.
 - **Module 13 (docs/demo/deployment): not started.** No README yet; no
   Loom video; no deployment.
 - **Module 14 (React + Tailwind frontend): explicitly deferred.** Bonus
