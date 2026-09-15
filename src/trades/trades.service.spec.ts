@@ -32,10 +32,17 @@ describe('TradesService (integration)', () => {
 
     await db.delete(trades);
     for (const [currency, amount] of Object.entries(TEST_BALANCES)) {
+      // Upsert, not update: on a fresh database (e.g. CI, right after
+      // migrations, before any seed has run) these rows don't exist yet —
+      // an update() would silently affect zero rows and the test would
+      // fail confusingly downstream instead of setting up its own fixture.
       await db
-        .update(balances)
-        .set({ amount, updatedAt: new Date() })
-        .where(eq(balances.currency, currency));
+        .insert(balances)
+        .values({ currency, amount })
+        .onConflictDoUpdate({
+          target: balances.currency,
+          set: { amount, updatedAt: new Date() },
+        });
     }
   });
 

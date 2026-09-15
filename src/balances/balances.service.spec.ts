@@ -2,7 +2,6 @@
  * Integration test: runs against the real, isolated Postgres container,
  * since BalancesService is a thin read layer over the actual table.
  */
-import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { balances } from '../db/schema.js';
 import { BalancesService } from './balances.service.js';
@@ -12,10 +11,21 @@ describe('BalancesService (integration)', () => {
 
   beforeEach(async () => {
     service = new BalancesService();
-    await db
-      .update(balances)
-      .set({ amount: '42.000000', updatedAt: new Date() })
-      .where(eq(balances.currency, 'USD'));
+    // Upsert, not update: on a fresh database (e.g. CI, right after
+    // migrations, before any seed has run) none of these rows exist yet.
+    for (const [currency, amount] of Object.entries({
+      USD: '42.000000',
+      INR: '0.000000',
+      BTC: '0.000000',
+    })) {
+      await db
+        .insert(balances)
+        .values({ currency, amount })
+        .onConflictDoUpdate({
+          target: balances.currency,
+          set: { amount, updatedAt: new Date() },
+        });
+    }
   });
 
   afterAll(async () => {
