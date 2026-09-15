@@ -183,6 +183,50 @@ mode change to direct implementation.
   files with no idea how to typecheck them — fixed by excluding
   `frontend` in the root tsconfig; confirmed both typecheck independently
   clean.
+- **Independent adversarial code review (2026-09-15): done, findings fixed.**
+  On the person's explicit request, delegated a full review to a genuinely
+  fresh agent — zero context from this conversation, instructed to treat
+  every claim in CLAUDE.md/README/Notion as unverified rather than trust
+  the project's own account of itself. It found two critical bugs and one
+  high-severity issue, all independently re-confirmed by manual code trace
+  before fixing (not taken on faith), and all re-attempted live against
+  the fix afterward to prove the exploits are actually closed:
+  - **Same-currency trade minted money.** `executeTrade()` read `toBalance`
+    before debiting `fromBalance`; a `fromCurrency === toCurrency` trade
+    silently erased the debit while the credit still applied — a $100
+    same-currency "trade" turned into a ~$7.69M balance increase,
+    repeatable at will. Fixed at the validation layer (a custom
+    `IsDifferentCurrency` class-validator constraint in
+    `create-trade.dto.ts`), rejecting the request with `400` before it
+    ever reaches `TradesService`.
+  - **No row locking — lost updates under concurrency.** Two concurrent
+    trades against the same currency could both read the same starting
+    balance and both commit, leaving `balances` and `trades` mutually
+    inconsistent. Fixed with `SELECT ... FOR UPDATE` on both balance rows
+    in one statement, locked in a fixed alphabetical-by-currency order
+    (not from/to order, which flips by trade direction) so two concurrent
+    trades on the same pair in opposite directions can't deadlock each
+    other.
+  - **Money arithmetic used plain JS `Number()`/`String()`** on Postgres
+    `numeric` strings — floating point, not exact decimal, contradicting
+    the README's explicit claim. Replaced with `decimal.js` throughout
+    `TradesService`; schema and string I/O unchanged, only the math.
+  - Regression tests added for all three (a DTO unit test, a real e2e
+    HTTP test proving the DB is never touched, a concurrent-trades test,
+    and a decimal-divergence test with an empirically-verified diverging
+    value) — the review noted zero coverage existed for any of them.
+  - Also fixed while in there: `@nestjs/observe` fully removed (flagged
+    dead weight since Module 02, never actually uninstalled until now);
+    one stray uncommitted formatting diff cleaned up.
+  - **Deliberately left alone, not by oversight:** the review's two
+    low-severity findings — inconsistent manual validation on GET
+    endpoints (cosmetic, not exploitable) and fully open CORS (acceptable
+    given the locked no-auth scope decision) — were flagged and
+    consciously not touched, on the person's explicit instruction.
+  - Verified twice before pushing: once against the persistent local
+    database, once against a fresh throwaway Postgres/Redis with no
+    `.env` (same conditions as CI). Confirmed genuinely green on GitHub
+    Actions afterward, not just locally.
 
 A living project overview (architecture, data model, the 15s-expiry
 mechanism, trade-offs) is maintained in Notion — ask the person for the
