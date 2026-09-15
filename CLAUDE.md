@@ -118,10 +118,13 @@ mode change to direct implementation.
   by `id`, not `created_at`, to stay unambiguous on same-millisecond
   trades), optional `?limit=` clamped to [1, 200] with a default of 50.
   Verified live.
-- **Module 10 (versioning/errors/validation): not started.** No
-  `class-validator`/`ValidationPipe` yet — `POST /trades`'s body is just a
-  TypeScript interface, so a malformed request throws unhandled rather than
-  a clean 400. No API versioning (`/v1/...`) yet either.
+- **Module 10 (versioning/errors/validation): done.** Every route now lives
+  under `/v1/...` (`app.enableVersioning`), except the root `GET /` health
+  route, explicitly `VERSION_NEUTRAL`. Global `ValidationPipe`
+  (whitelist + forbidNonWhitelisted + transform) plus `CreateTradeDto`
+  actually validate `POST /trades`'s body at runtime. Verified live: bad
+  type, missing field, unknown extra field, wrong-length currency, and
+  negative amount are all rejected with a specific 400.
 - **Module 11 (testing): not started.** Vitest is installed; nothing
   written. Note: the brief's locked-in stack says Jest, but the actual
   scaffold shipped with Vitest — flagged, not yet resolved either way.
