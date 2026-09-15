@@ -114,8 +114,10 @@ mode change to direct implementation.
   409s, a real trade moves exact amounts and inserts a correct row,
   insufficient funds still rolls back completely (checked directly against
   the database, not just the HTTP response).
-- **Module 09 (trade history): not started.** `GET /trades` — required by
-  the brief, currently missing.
+- **Module 09 (trade history): done.** `GET /trades`, newest-first (ordered
+  by `id`, not `created_at`, to stay unambiguous on same-millisecond
+  trades), optional `?limit=` clamped to [1, 200] with a default of 50.
+  Verified live.
 - **Module 10 (versioning/errors/validation): not started.** No
   `class-validator`/`ValidationPipe` yet — `POST /trades`'s body is just a
   TypeScript interface, so a malformed request throws unhandled rather than
