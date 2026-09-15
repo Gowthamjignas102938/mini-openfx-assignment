@@ -38,9 +38,12 @@ first.
 - **Stack, exactly as the brief names it — do not substitute:** TypeScript,
   NestJS (with Express), PostgreSQL, Redis (price cache), Drizzle ORM, Jest
   for tests, GitHub Actions CI (lint, typecheck, test).
-- **Frontend: React + Tailwind CSS** — but explicitly a *bonus*, built only
-  after the graded backend (Modules 00–13 in the field guide) is solid and
-  submittable. Never let frontend work displace backend/test/CI work.
+- **Frontend: React + Tailwind CSS** — **changed 2026-09-15: no longer an
+  optional bonus, now a mandatory part of the project.** Sequencing is
+  unchanged: it's still built only after the graded backend (Modules
+  00–13) is solid and submittable, on the person's own explicit
+  instruction. Never let frontend work displace backend/test/CI work in
+  progress.
 - **Deliberately considered and rejected**, worth naming in the README's
   trade-offs section rather than silently forgetting: a richer
   indicative-price / firm-quote / ledger-entries model, idempotency keys, a
@@ -154,8 +157,32 @@ mode change to direct implementation.
   already exists in the Notion doc; (2) optional bonus deployment
   (Render/Railway/Fly.io) — not attempted, no cloud credentials
   available and it's explicitly bonus, not mandatory.
-- **Module 14 (React + Tailwind frontend): explicitly deferred.** Bonus
-  only, after 00–13 are solid — do not start this without being asked.
+- **Module 14 (React + Tailwind frontend): done.** Backend re-verified
+  solid first (per explicit instruction) — `/v1` versioning, validation,
+  and error handling spot-checked live; full suite green; GitHub Actions
+  green. That check caught a real bug the *previous* push had introduced
+  (a cross-file test race — `TradesService`/`BalancesService` specs share
+  one real Postgres database as fixture, and Jest runs spec files in
+  parallel workers by default; GitHub's runner hit the race, 5 local
+  reproduction attempts didn't — fixed with `maxWorkers: 1`). Built
+  `frontend/`: Vite + React + TS + Tailwind CSS v4, no router (four tabs,
+  not four routes). Four views — Prices, Balances, Trade (fetch-then-
+  submit with a live 15s countdown mirroring the backend's real Redis
+  TTL; every error case — 409 stale price, 400 insufficient funds/unknown
+  currency/validation — shown with the backend's own specific message),
+  Trade History (the backend's real `?limit=` cap, no fake pagination).
+  `app.enableCors()` added to the backend's `main.ts` — never needed
+  before since nothing browser-based talked to the API. Verified for real
+  in an actual browser (claude-in-chrome): all four views clicked
+  through against the real backend, including both the trade success
+  path and a live 409 (the 15s window genuinely expired mid-test),
+  console clean. A second real regression caught and fixed after that:
+  adding `frontend/` under the repo root broke the backend's
+  `npm run typecheck`, since the root `tsconfig.json`'s default `**/*`
+  include (from the Module 11 rootDir change) picked up frontend's React
+  files with no idea how to typecheck them — fixed by excluding
+  `frontend` in the root tsconfig; confirmed both typecheck independently
+  clean.
 
 A living project overview (architecture, data model, the 15s-expiry
 mechanism, trade-offs) is maintained in Notion — ask the person for the
