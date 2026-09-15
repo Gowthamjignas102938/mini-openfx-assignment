@@ -1,12 +1,6 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { TradesService } from './trades.service.js';
-
-interface CreateTradeBody {
-  fromCurrency: string;
-  toCurrency: string;
-  fromAmount: number;
-  symbol: string;
-}
+import { CreateTradeDto } from './dto/create-trade.dto.js';
 
 const DEFAULT_HISTORY_LIMIT = 50;
 const MAX_HISTORY_LIMIT = 200;
@@ -16,7 +10,7 @@ export class TradesController {
   constructor(private readonly tradesService: TradesService) {}
 
   @Post()
-  async createTrade(@Body() body: CreateTradeBody) {
+  async createTrade(@Body() body: CreateTradeDto) {
     return this.tradesService.executeTrade(body);
   }
 
