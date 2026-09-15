@@ -190,7 +190,7 @@ The API is now at `http://localhost:3000`.
 npm run lint        # oxlint
 npm run typecheck    # tsc --noEmit
 npm test             # unit + integration tests (needs Postgres + Redis running)
-npm run test:e2e     # e2e test over real HTTP via supertest
+npm run test:e2e     # e2e tests over real HTTP via supertest
 ```
 
 `PricesService` is unit-tested with a mocked HTTP client and Redis client —
