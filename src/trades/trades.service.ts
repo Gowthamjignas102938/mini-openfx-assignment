@@ -1,5 +1,5 @@
 import { Injectable, ConflictException, BadRequestException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { balances, trades } from '../db/schema.js';
 import { PricesService } from '../prices/prices.service.js';
@@ -82,5 +82,9 @@ export class TradesService {
 
       return trade;
     });
+  }
+
+  async getTradeHistory(limit: number) {
+    return db.select().from(trades).orderBy(desc(trades.id)).limit(limit);
   }
 }
