@@ -15,11 +15,12 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "oxlint src/ test/",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:cov": "vitest run --coverage",
-    "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "test:e2e": "vitest run --config ./vitest.config.e2e.ts"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-vm-modules --env-file=.env node_modules/.bin/jest",
+    "test:watch": "node --experimental-vm-modules --env-file=.env node_modules/.bin/jest --watch",
+    "test:cov": "node --experimental-vm-modules --env-file=.env node_modules/.bin/jest --coverage",
+    "test:debug": "node --experimental-vm-modules --env-file=.env --inspect-brk node_modules/.bin/jest --runInBand",
+    "test:e2e": "node --experimental-vm-modules --env-file=.env node_modules/.bin/jest --config ./test/jest-e2e.json --forceExit"
   },
   "dependencies": {
     "@nestjs/axios": "^12.0.1",
@@ -42,17 +43,17 @@
     "@nestjs/schematics": "^12.0.0",
     "@nestjs/testing": "^12.0.1",
     "@types/express": "^5.0.0",
+    "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.0.0",
-    "@vitest/coverage-v8": "^4.1.2",
     "drizzle-kit": "^0.31.10",
+    "jest": "^30.5.1",
     "oxlint": "^1.58.0",
     "prettier": "^3.4.2",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
-    "typescript": "^6.0.2",
-    "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^4.1.2"
+    "ts-jest": "^29.4.12",
+    "typescript": "^6.0.2"
   }
 }
