@@ -143,8 +143,17 @@ mode change to direct implementation.
   an unseeded database — fixed to `onConflictDoUpdate` (upsert). Pushed
   and confirmed genuinely green on GitHub Actions (run 34938582400, all
   green in 46s), not just locally.
-- **Module 13 (docs/demo/deployment): not started.** No README yet; no
-  Loom video; no deployment.
+- **Module 13 (docs/demo/deployment): README done, two pieces genuinely
+  need the person, not Claude.** `README.md` has architecture, data
+  model, API reference (every curl example actually run and its real
+  response captured — not hand-typed), setup instructions (matches
+  what CI runs), testing, and design decisions/trade-offs. Also removed
+  the long-flagged `RatesModule` placeholder (teaching purpose served
+  back in Module 02). Still open: (1) record and link the 5-10 min Loom
+  walkthrough the brief requires — a presentation-plan outline for it
+  already exists in the Notion doc; (2) optional bonus deployment
+  (Render/Railway/Fly.io) — not attempted, no cloud credentials
+  available and it's explicitly bonus, not mandatory.
 - **Module 14 (React + Tailwind frontend): explicitly deferred.** Bonus
   only, after 00–13 are solid — do not start this without being asked.
 
