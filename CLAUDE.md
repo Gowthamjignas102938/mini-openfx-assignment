@@ -125,9 +125,16 @@ mode change to direct implementation.
   actually validate `POST /trades`'s body at runtime. Verified live: bad
   type, missing field, unknown extra field, wrong-length currency, and
   negative amount are all rejected with a specific 400.
-- **Module 11 (testing): not started.** Vitest is installed; nothing
-  written. Note: the brief's locked-in stack says Jest, but the actual
-  scaffold shipped with Vitest — flagged, not yet resolved either way.
+- **Module 11 (testing): done.** Switched Vitest → Jest (resolves the
+  stack discrepancy; asked the person directly rather than deciding
+  alone, since CLAUDE.md flags stack substitutions as a no-silent-change
+  item — chose Jest per the brief). Configured for this project's native
+  ESM + nodenext (ts-jest ESM preset, --experimental-vm-modules). 15
+  unit/integration tests (`PricesService` unit-tested with mocked
+  HTTP/Redis; `TradesService`/`BalancesService` integration-tested
+  against the real Postgres container, since transaction/atomicity is
+  exactly what's under test) + 1 e2e test via supertest
+  (`npm run test:e2e`). `npm run typecheck` added. All green.
 - **Module 12 (CI/CD): not started.** No GitHub Actions workflow.
 - **Module 13 (docs/demo/deployment): not started.** No README yet; no
   Loom video; no deployment.
