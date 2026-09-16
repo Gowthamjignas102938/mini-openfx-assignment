@@ -8,10 +8,12 @@ async function main() {
       { currency: 'USD', amount: '10000' },
       { currency: 'INR', amount: '0' },
       { currency: 'BTC', amount: '0' },
+      { currency: 'EUR', amount: '0' },
+      { currency: 'MXN', amount: '0' },
     ])
     .onConflictDoNothing();
 
-  console.log('Seeded starting balances (USD 10000, INR 0, BTC 0).');
+  console.log('Seeded starting balances (USD 10000, INR 0, BTC 0, EUR 0, MXN 0).');
 }
 
 main()

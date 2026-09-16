@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api/client';
 import type { Price, Trade } from '../api/types';
 
-// Trade currencies are limited to pairs with a real Binance symbol.
-// INR is a real seeded balance (visible on the Balances tab) but Binance's
-// spot market has no INR pair at all — no symbol could ever satisfy
-// convertAmount() for it, so it's deliberately left out of trading rather
-// than offered and always failing.
-const CURRENCIES = ['USD', 'BTC'];
+// Trade currencies are limited to ones with a real, currently live Binance
+// symbol (verified directly against Binance's bookTicker, not just that a
+// symbol is listed — some listed pairs, like AUDUSDT/BTCAUD, return
+// 0.00000000 bid/ask because they're delisted). USD -> BTCUSDT, EUR ->
+// EURUSDT/BTCEUR, MXN -> USDTMXN/BTCMXN all have live prices. INR (no
+// Binance pair at all) and AUD (listed but dead) are left out — they still
+// appear as real seeded balances on the Balances tab, just not tradeable.
+const CURRENCIES = ['USD', 'BTC', 'EUR', 'MXN'];
 const PRICE_VALIDITY_SECONDS = 15;
 
 export function TradeView() {

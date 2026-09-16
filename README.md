@@ -64,7 +64,7 @@ for what was consciously left out.
 
 | Column       | Type                  | Notes                                      |
 |--------------|-----------------------|---------------------------------------------|
-| `currency`   | `varchar(3)`, PK      | `USD` / `INR` / `BTC`, seeded at startup    |
+| `currency`   | `varchar(3)`, PK      | `USD` / `INR` / `BTC` / `EUR` / `MXN`, seeded at startup |
 | `amount`     | `numeric(18,6)`       | Exact decimal — handled as strings in TS, never floats |
 | `updated_at` | `timestamp`           | defaults to `now()`                          |
 
@@ -175,7 +175,7 @@ cp .env.example .env
 # 4. Apply migrations
 npm run db:migrate
 
-# 5. Seed starting balances (USD 10000, INR 0, BTC 0) — safe to re-run
+# 5. Seed starting balances (USD 10000, INR 0, BTC 0, EUR 0, MXN 0) — safe to re-run
 npm run db:seed
 
 # 6. Run the app
@@ -233,17 +233,38 @@ back to `.ts` source) since this project runs as native ESM under
 
 ## Assumptions & scope
 
-- A single demo wallet holds three currencies: `USD`, `INR`, `BTC`.
+- A single demo wallet holds five currencies: `USD`, `INR`, `BTC`, `EUR`,
+  `MXN`.
 - "Indicative price" means whatever Binance's `bookTicker` returns for the
   given symbol — this project doesn't independently source or validate
   prices beyond that.
-- **`INR` is balance-only, not tradeable.** Binance (the sole price source)
-  has no INR trading pair on its spot market at all — no symbol exists that
-  `convertAmount()` could ever resolve for `INR`/`USD` or `INR`/`BTC`. Rather
-  than offer a trade direction that can never succeed, the frontend's Trade
-  tab only lists `USD`/`BTC`; `INR` still appears as a real seeded balance
-  on the Balances tab. Adding real INR trading would mean a second price
-  source beyond Binance, which is more than this project's scope calls for.
+- **Which currencies are actually tradeable is limited by what Binance
+  genuinely quotes live, not just what's listed.** Each candidate was
+  checked directly against Binance's `bookTicker` endpoint, not just its
+  symbol list, since some listed symbols are delisted and return
+  `0.00000000`/`0.00000000`:
+  - `USD` trades via `BTCUSDT`; `EUR` via `EURUSDT`/`BTCEUR`; `MXN` via
+    `USDTMXN`/`BTCMXN` — all confirmed live. The frontend's Trade tab lists
+    `USD`/`BTC`/`EUR`/`MXN`.
+  - `INR` has **no** Binance pair at all (not even a delisted one) — left
+    out of trading entirely.
+  - `AUD` **was requested and rejected**: `AUDUSDT`/`BTCAUD` are listed in
+    Binance's symbol list but delisted (`status: BREAK`), and their live
+    `bookTicker` returns zero bid/ask — same practical failure as `INR`,
+    just less obvious from the symbol list alone.
+  - `USDT` was also requested and rejected as a *separate* tradeable
+    currency: it's already what `USD` maps to internally
+    (`CURRENCY_TO_BINANCE_ASSET` in `trades.service.ts`), so there's no
+    distinct Binance pair to convert between "USD" and "USDT" as two
+    different things.
+  - Both `INR` and `AUD` still appear as real seeded balances on the
+    Balances tab — they're just excluded from the Trade tab's dropdowns.
+  - One real limitation this leaves: there's no direct `EUR`/`MXN` Binance
+    symbol (only `EURMXN`-shaped guesses, both invalid), so a trade
+    directly between those two specifically still hits "Cannot determine
+    trade direction" — same as any other pair without a matching Binance
+    symbol. Not a bug; this project only ever resolves one Binance symbol
+    per trade, never a triangulated route through a third currency.
 - A trade's `symbol` (e.g. `BTCUSDT`) isn't cross-validated against its
   `fromCurrency`/`toCurrency` pair — a client could technically pass a
   `symbol` unrelated to the two currencies. Not enforced; noted as a known
