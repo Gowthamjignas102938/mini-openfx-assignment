@@ -1,0 +1,48 @@
+# Render Blueprint — deploys the whole stack (API + Postgres + Redis + static
+# frontend) from this one file. On render.com: New -> Blueprint -> pick this
+# repo -> Apply. See DEPLOY.md for the manual steps this file can't do for you
+# (creating the account, connecting the repo, one URL cross-reference).
+
+databases:
+  - name: miniopenfx-db
+    plan: free          # NB: Render's free Postgres auto-expires 30 days after creation
+    databaseName: miniopenfx
+    user: miniopenfx
+
+services:
+  - type: keyvalue       # Render's current name for a managed Redis-protocol instance
+    name: miniopenfx-redis
+    plan: free           # free plan = in-memory only, data lost on restart — fine here,
+    ipAllowList: []       # since cached prices are meant to expire in 15s anyway
+
+  - type: web
+    name: miniopenfx-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free            # free web services spin down after 15 min idle (slow first hit)
+    healthCheckPath: /     # GET / returns "Hello World!" — already exists, no new code needed
+    preDeployCommand: node dist/db/migrate.js && node dist/db/seed.js
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: miniopenfx-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: miniopenfx-redis
+          property: connectionString
+      - key: PORT
+        value: 3000
+
+  - type: web
+    name: miniopenfx-frontend
+    runtime: static
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      # Must match the miniopenfx-api service's real URL. Render names it
+      # https://<service-name>.onrender.com — update this if you rename the
+      # api service above, or if Render suffixes the name for uniqueness.
+      - key: VITE_API_BASE_URL
+        value: https://miniopenfx-api.onrender.com/v1

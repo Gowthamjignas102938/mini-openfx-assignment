@@ -1,0 +1,11 @@
+node_modules
+dist
+frontend
+.git
+.github
+.env
+.env.example
+*.log
+coverage
+test
+drizzle.config.ts
