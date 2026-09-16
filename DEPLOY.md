@@ -46,6 +46,32 @@ committed to this repo.
    frontend won't be able to reach the API otherwise.
 6. Open the `miniopenfx-frontend` URL — that's your deployed app.
 
+## Binance blocks Render's default region (Oregon, USA)
+
+Binance's public API rejects requests from the US ("Service unavailable from
+a restricted location according to 'b. Eligibility'") — this is Binance's
+own geo-block, not a bug here. `render.yaml` now pins `miniopenfx-api` to
+`region: singapore` instead of Render's `oregon` default. Postgres and Redis
+stay in `oregon` — they never call Binance, so their region doesn't matter,
+and moving them isn't worth the extra cross-region hop.
+
+**Render can't change an existing service's region in place.** If you
+already deployed `miniopenfx-api` in Oregon before this fix, you have to
+recreate it:
+
+1. Note down your current `API_KEY` value first (Environment tab) — deleting
+   the service deletes its env vars too, and Render will re-prompt for
+   `sync: false` vars when it's recreated.
+2. In the Render dashboard, delete only the `miniopenfx-api` service (leave
+   `miniopenfx-db`, `miniopenfx-redis`, `miniopenfx-frontend` alone).
+3. Go to the Blueprint (`mini-openfx1`) → **Manual Sync**. Render sees
+   `miniopenfx-api` is declared in `render.yaml` but missing, and recreates
+   it fresh — this time in Singapore.
+4. Re-enter `API_KEY` on the recreated service with the value from step 1.
+5. Re-check `VITE_API_BASE_URL` in `render.yaml` still matches its URL
+   (Render keeps the same `https://miniopenfx-api.onrender.com` naming
+   since the service name didn't change, but confirm).
+
 ## Known free-tier caveats (worth knowing, not blockers)
 
 - **Free Postgres self-destructs 30 days after creation** (14-day grace

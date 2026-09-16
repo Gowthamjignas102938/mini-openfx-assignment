@@ -19,6 +19,11 @@ services:
     name: miniopenfx-api
     runtime: docker
     dockerfilePath: ./Dockerfile
+    region: singapore      # NOT oregon (Render's default): Binance blocks API access
+                           # from the US ("restricted location... b. Eligibility"),
+                           # so this service must run somewhere Binance doesn't block.
+                           # Region is set at creation and can't be changed afterward —
+                           # see DEPLOY.md for the delete-and-recreate steps this needs.
     plan: free            # free web services spin down after 15 min idle (slow first hit)
     healthCheckPath: /     # GET / returns "Hello World!" — already exists, no new code needed
     # NB: preDeployCommand needs a paid plan — Render rejects it on `plan: free`.
