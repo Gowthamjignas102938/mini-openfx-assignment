@@ -12,6 +12,44 @@ interface ExecuteTradeInput {
   symbol: string;
 }
 
+// Binance has no "USD" asset — its pairs quote against "USDT". This project's
+// currency code is "USD", so it needs translating before it can be compared
+// against a Binance symbol like "BTCUSDT".
+const CURRENCY_TO_BINANCE_ASSET: Record<string, string> = { USD: 'USDT' };
+
+function toBinanceAsset(currency: string): string {
+  return CURRENCY_TO_BINANCE_ASSET[currency] ?? currency;
+}
+
+/**
+ * A Binance symbol quotes price as "quote-currency units per 1 unit of the
+ * base currency" (e.g. BTCUSDT's price is USDT per 1 BTC). Converting
+ * base -> quote multiplies by that price; quote -> base divides. Which one
+ * applies depends on which side of the symbol fromCurrency/toCurrency fall
+ * on, so it has to be resolved per trade rather than assumed.
+ */
+function convertAmount(
+  fromAmount: Decimal,
+  price: number,
+  symbol: string,
+  fromCurrency: string,
+  toCurrency: string,
+): Decimal {
+  const fromAsset = toBinanceAsset(fromCurrency);
+  const toAsset = toBinanceAsset(toCurrency);
+
+  if (symbol === `${fromAsset}${toAsset}`) {
+    return fromAmount.times(price);
+  }
+  if (symbol === `${toAsset}${fromAsset}`) {
+    return fromAmount.dividedBy(price);
+  }
+
+  throw new BadRequestException(
+    `Cannot determine trade direction: symbol "${symbol}" does not match currency pair ${fromCurrency}/${toCurrency}`,
+  );
+}
+
 @Injectable()
 export class TradesService {
   constructor(private readonly pricesService: PricesService) {}
@@ -27,7 +65,6 @@ export class TradesService {
     }
 
     const fromAmountDecimal = new Decimal(fromAmount);
-    const toAmountDecimal = fromAmountDecimal.times(price.bid);
 
     return db.transaction(async (tx) => {
       // Lock both balance rows together, in one statement, in a fixed
@@ -59,6 +96,14 @@ export class TradesService {
       if (!toBalance) {
         throw new BadRequestException(`Unknown currency "${toCurrency}"`);
       }
+
+      const toAmountDecimal = convertAmount(
+        fromAmountDecimal,
+        price.bid,
+        price.symbol,
+        fromCurrency,
+        toCurrency,
+      );
 
       const currentFromAmount = new Decimal(fromBalance.amount);
       if (currentFromAmount.lessThan(fromAmountDecimal)) {

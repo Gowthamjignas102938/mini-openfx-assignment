@@ -50,7 +50,14 @@ describe('TradesService (integration)', () => {
     await db.$client.end();
   });
 
-  it('executes a valid trade: debits fromCurrency, credits toCurrency, inserts one trade row', async () => {
+  it('executes a valid trade converting quote -> base currency (USD -> BTC divides by price)', async () => {
+    // Regression test: BTCUSDT's price is "USDT per 1 BTC", so converting
+    // USD (the quote side, via the USD->USDT mapping) into BTC (the base
+    // side) must divide by the price, not multiply. This test previously
+    // asserted the buggy multiplied value (~1000 BTC from 10 USD at price
+    // 100) as if it were correct — that assertion was the bug hiding in
+    // plain sight, since nothing ever tested the reverse direction to catch
+    // the discrepancy.
     pricesService.getCachedPriceOnly.mockResolvedValue({
       symbol: 'BTCUSDT',
       bid: 100,
@@ -67,12 +74,62 @@ describe('TradesService (integration)', () => {
     });
 
     expect(trade.fromAmount).toBe('10.000000');
-    expect(Number(trade.toAmount)).toBeCloseTo(1000, 5);
+    expect(trade.toAmount).toBe('0.100000');
     expect(await currentAmount('USD')).toBe(990);
-    expect(await currentAmount('BTC')).toBe(1001);
+    expect(await currentAmount('BTC')).toBeCloseTo(1.1, 6);
 
     const allTrades = await db.select().from(trades);
     expect(allTrades).toHaveLength(1);
+  });
+
+  it('executes a valid trade converting base -> quote currency (BTC -> USD multiplies by price)', async () => {
+    // The other half of the same regression: going the opposite direction
+    // through the identical symbol must multiply, not divide.
+    pricesService.getCachedPriceOnly.mockResolvedValue({
+      symbol: 'BTCUSDT',
+      bid: 100,
+      ask: 101,
+      timestamp: Date.now(),
+      source: 'binance',
+    });
+
+    const trade = await tradesService.executeTrade({
+      fromCurrency: 'BTC',
+      toCurrency: 'USD',
+      fromAmount: 0.5,
+      symbol: 'BTCUSDT',
+    });
+
+    expect(trade.fromAmount).toBe('0.500000');
+    expect(trade.toAmount).toBe('50.000000');
+    expect(await currentAmount('BTC')).toBeCloseTo(0.5, 6);
+    expect(await currentAmount('USD')).toBe(1050);
+
+    const allTrades = await db.select().from(trades);
+    expect(allTrades).toHaveLength(1);
+  });
+
+  it('rejects a trade whose symbol does not match the currency pair', async () => {
+    pricesService.getCachedPriceOnly.mockResolvedValue({
+      symbol: 'BTCUSDT',
+      bid: 100,
+      ask: 101,
+      timestamp: Date.now(),
+      source: 'binance',
+    });
+
+    await expect(
+      tradesService.executeTrade({
+        fromCurrency: 'USD',
+        toCurrency: 'INR',
+        fromAmount: 10,
+        symbol: 'BTCUSDT',
+      }),
+    ).rejects.toThrow('Cannot determine trade direction');
+
+    expect(await currentAmount('USD')).toBe(1000);
+    expect(await currentAmount('INR')).toBe(500);
+    expect(await db.select().from(trades)).toHaveLength(0);
   });
 
   it('rejects with 409 on a cache miss and makes no changes at all', async () => {
