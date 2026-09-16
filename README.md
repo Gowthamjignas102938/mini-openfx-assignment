@@ -237,6 +237,13 @@ back to `.ts` source) since this project runs as native ESM under
 - "Indicative price" means whatever Binance's `bookTicker` returns for the
   given symbol — this project doesn't independently source or validate
   prices beyond that.
+- **`INR` is balance-only, not tradeable.** Binance (the sole price source)
+  has no INR trading pair on its spot market at all — no symbol exists that
+  `convertAmount()` could ever resolve for `INR`/`USD` or `INR`/`BTC`. Rather
+  than offer a trade direction that can never succeed, the frontend's Trade
+  tab only lists `USD`/`BTC`; `INR` still appears as a real seeded balance
+  on the Balances tab. Adding real INR trading would mean a second price
+  source beyond Binance, which is more than this project's scope calls for.
 - A trade's `symbol` (e.g. `BTCUSDT`) isn't cross-validated against its
   `fromCurrency`/`toCurrency` pair — a client could technically pass a
   `symbol` unrelated to the two currencies. Not enforced; noted as a known

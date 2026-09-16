@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api/client';
 import type { Price, Trade } from '../api/types';
 
-const CURRENCIES = ['USD', 'INR', 'BTC'];
+// Trade currencies are limited to pairs with a real Binance symbol.
+// INR is a real seeded balance (visible on the Balances tab) but Binance's
+// spot market has no INR pair at all — no symbol could ever satisfy
+// convertAmount() for it, so it's deliberately left out of trading rather
+// than offered and always failing.
+const CURRENCIES = ['USD', 'BTC'];
 const PRICE_VALIDITY_SECONDS = 15;
 
 export function TradeView() {
