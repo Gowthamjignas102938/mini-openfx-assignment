@@ -16,9 +16,12 @@ committed to this repo.
   isn't in the production image). Compiles to `dist/db/migrate.js`.
 - **`render.yaml`** — the Blueprint: `miniopenfx-db` (Postgres),
   `miniopenfx-redis` (Redis-compatible Key Value store), `miniopenfx-api`
-  (the Dockerized NestJS service, migrating + seeding automatically on every
-  deploy via `preDeployCommand`), and `miniopenfx-frontend` (the static Vite
-  build).
+  (the Dockerized NestJS service), and `miniopenfx-frontend` (the static
+  Vite build). Migrations + seed run automatically on every container boot
+  (chained into the Dockerfile's `CMD`, since `preDeployCommand` needs a
+  paid Render plan and this is deployed on `plan: free`) — both steps are
+  idempotent, so this is safe on every cold start or restart, not just the
+  first one.
 
 ## The part only you can do (needs your Render login)
 
@@ -34,7 +37,8 @@ committed to this repo.
    value — Render can't cross-reference one service's manual secret into
    another, so this one has to be copied by hand.
 4. First deploy takes a few minutes (Postgres provisions, the Docker image
-   builds, migrations + seed run via `preDeployCommand`, then the app boots).
+   builds, then the container boots — running migrations, then the seed,
+   then the actual server, in that order, per the Dockerfile's `CMD`).
 5. Once `miniopenfx-api` has a real URL, check it matches
    `VITE_API_BASE_URL` in `render.yaml` (`https://miniopenfx-api.onrender.com/v1`).
    Render usually keeps the exact name you gave the service, but if it

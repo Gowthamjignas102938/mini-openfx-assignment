@@ -21,4 +21,6 @@ COPY --from=builder /app/dist ./dist
 COPY drizzle ./drizzle
 
 EXPOSE 3000
-CMD ["node", "dist/main.js"]
+# Migrations + seed run on every boot (free-tier services have no
+# preDeployCommand hook) — both are idempotent, see render.yaml's note.
+CMD ["sh", "-c", "node dist/db/migrate.js && node dist/db/seed.js && node dist/main.js"]

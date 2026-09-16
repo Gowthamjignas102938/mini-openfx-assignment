@@ -21,7 +21,11 @@ services:
     dockerfilePath: ./Dockerfile
     plan: free            # free web services spin down after 15 min idle (slow first hit)
     healthCheckPath: /     # GET / returns "Hello World!" — already exists, no new code needed
-    preDeployCommand: node dist/db/migrate.js && node dist/db/seed.js
+    # NB: preDeployCommand needs a paid plan — Render rejects it on `plan: free`.
+    # Migrations + seed instead run at container boot (see Dockerfile's CMD),
+    # which works on any plan. Both steps are idempotent (drizzle-orm tracks
+    # applied migrations; the seed uses onConflictDoNothing), so re-running
+    # them on every cold start/restart is safe — just a few extra ms.
     envVars:
       - key: DATABASE_URL
         fromDatabase:
