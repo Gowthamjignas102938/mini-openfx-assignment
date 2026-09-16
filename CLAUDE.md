@@ -86,8 +86,8 @@ first.
 
 ## Current status
 
-Last updated by Claude, 2026-09-15, after the Module 8 audit and the
-mode change to direct implementation.
+Last updated by Claude, 2026-09-16, after adding the tradeable-pairs list
+and live trade preview on top of the Module 14 frontend.
 
 - **Module 00 (orientation/product thinking): done.** Scope decisions above
   are final.
@@ -257,6 +257,51 @@ mode change to direct implementation.
     real live trade against the running app (100 USD -> BTC at a real fetched
     price) produced the mathematically correct 0.001317 BTC with matching
     balance changes, not just a passing assertion.
+
+- **Post-Module-14 frontend/backend additions (2026-09-16): done.** Two
+  small features layered on top of the already-shipped frontend, each its
+  own commit:
+  - **`GET /v1/prices/pairs`**: returns `{symbol, base, quote, bid, ask}`
+    for the five fixed tradeable pairs, fetched through the existing
+    `getPrice()` cache-aside method (no new/separate Binance-calling path).
+    The pair list itself was pulled out of a comment in `TradeView.tsx`
+    into one real shared constant, `src/trades/currency-pairs.ts`
+    (`TRADEABLE_PAIRS`), so it has a single source of truth on the backend.
+    The Prices tab now fetches this on mount and shows all five as a
+    clickable table above the existing manual symbol lookup (clicking a
+    row fills the lookup input); the manual lookup itself is unchanged.
+  - **`GET /v1/trades/preview`**: a read-only `TradesService.previewTrade()`
+    that mirrors the first half of `executeTrade()` exactly — same
+    `getCachedPriceOnly()` call, same 409 on a cache miss, same shared
+    `convertAmount()`/`toBinanceAsset()` conversion math — but stops before
+    any balance lookup, row lock, or `db.transaction()`. Zero DB access.
+    The Trade tab now shows a debounced (~300ms) "≈ X CURRENCY (estimate)"
+    line under the Amount field while a cached price is still valid;
+    any preview failure (expired price mid-typing, or otherwise) just
+    clears the estimate rather than showing an error, since it's a
+    low-stakes UI hint, not the real trade.
+  - New tests: two service tests for `getTradeablePairs()` (cache hit and
+    cache-miss-falls-through-to-Binance) in `prices.service.spec.ts`; four
+    tests for `previewTrade()` in a new, deliberately separate
+    `trades.service.preview.spec.ts` — separate specifically because it
+    needs no real Postgres (previewTrade never touches the database),
+    unlike `trades.service.spec.ts`'s real-Postgres integration tests for
+    `executeTrade()`.
+  - Verified: `npm run lint`, `npm run typecheck`, and `npm test` all green
+    on both the backend and (via its own `tsc -b`/`oxlint`) the frontend,
+    aside from one pre-existing, unrelated failure in
+    `balances.service.spec.ts` (asserts only 3 seeded currencies; the seed
+    now has 5, since EUR/MXN were added per the commit above Module 13's
+    entry) — confirmed via `git stash` that this failure predates and is
+    unrelated to both of these additions.
+  - Not done, flagged rather than silently skipped: `TradeView.tsx`'s own
+    hardcoded `CURRENCIES` array/comment was left as-is rather than also
+    deriving it from the new pairs endpoint — the frontend (Vite) and
+    backend (Nest) are separate TS projects with separate `tsconfig`s (see
+    the Module 14 entry above on why `frontend/` is excluded from the root
+    one), so `TradeView.tsx` can't directly import `currency-pairs.ts`;
+    unifying it would mean having `TradeView` call `GET /v1/prices/pairs`
+    itself, which wasn't part of what was asked for this pass.
 
 A living project overview (architecture, data model, the 15s-expiry
 mechanism, trade-offs) is maintained in Notion — ask the person for the
