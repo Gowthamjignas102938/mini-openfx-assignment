@@ -144,6 +144,38 @@ export class TradesService {
     });
   }
 
+  // Read-only mirror of executeTrade()'s pricing step: same cached-price
+  // lookup, same 409 on a miss, same convertAmount() math — but no
+  // transaction, no row locks, and no database access at all, since there's
+  // nothing here that needs to be atomic or persisted. Used to show a live
+  // "you'll get ~X" estimate while the person is still typing an amount.
+  async previewTrade(input: ExecuteTradeInput) {
+    const { fromCurrency, toCurrency, fromAmount, symbol } = input;
+
+    const price = await this.pricesService.getCachedPriceOnly(symbol);
+    if (!price) {
+      throw new ConflictException(
+        `No valid cached price for "${symbol}" — fetch a fresh price first`,
+      );
+    }
+
+    const fromAmountDecimal = new Decimal(fromAmount);
+    const toAmountDecimal = convertAmount(
+      fromAmountDecimal,
+      price.bid,
+      price.symbol,
+      fromCurrency,
+      toCurrency,
+    );
+
+    return {
+      fromAmount: fromAmountDecimal.toFixed(6),
+      toAmount: toAmountDecimal.toFixed(6),
+      rate: new Decimal(price.bid).toFixed(8),
+      symbol: price.symbol,
+    };
+  }
+
   async getTradeHistory(limit: number) {
     return db.select().from(trades).orderBy(desc(trades.id)).limit(limit);
   }

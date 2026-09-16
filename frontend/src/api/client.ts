@@ -1,4 +1,11 @@
-import type { Balance, CreateTradeInput, Price, Trade } from './types';
+import type {
+  Balance,
+  CreateTradeInput,
+  Price,
+  Trade,
+  TradeablePair,
+  TradePreview,
+} from './types';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/v1';
 
@@ -41,6 +48,8 @@ export const api = {
   getPrice: (symbol: string) =>
     request<Price>(`/prices?symbol=${encodeURIComponent(symbol)}`),
 
+  getTradeablePairs: () => request<TradeablePair[]>('/prices/pairs'),
+
   getBalances: () => request<Balance[]>('/balances'),
 
   createTrade: (input: CreateTradeInput) =>
@@ -48,6 +57,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+
+  previewTrade: (input: CreateTradeInput) => {
+    const params = new URLSearchParams({
+      fromCurrency: input.fromCurrency,
+      toCurrency: input.toCurrency,
+      fromAmount: String(input.fromAmount),
+      symbol: input.symbol,
+    });
+    return request<TradePreview>(`/trades/preview?${params.toString()}`);
+  },
 
   getTradeHistory: (limit: number) =>
     request<Trade[]>(`/trades?limit=${limit}`),

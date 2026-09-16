@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api/client';
 import type { Price, Trade } from '../api/types';
 
+const PREVIEW_DEBOUNCE_MS = 300;
+
 // Trade currencies are limited to ones with a real, currently live Binance
 // symbol (verified directly against Binance's bookTicker, not just that a
 // symbol is listed — some listed pairs, like AUDUSDT/BTCAUD, return
@@ -29,6 +31,8 @@ export function TradeView() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [result, setResult] = useState<Trade | null>(null);
 
+  const [preview, setPreview] = useState<{ toAmount: string; toCurrency: string } | null>(null);
+
   // Client-side countdown mirroring the backend's real 15s Redis TTL — a UX
   // hint, not the source of truth. The server's cache is what actually
   // decides; this just helps the person understand why a late submit fails.
@@ -42,6 +46,42 @@ export function TradeView() {
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, [fetchedAt]);
+
+  // Live "you'll get ~X" estimate, debounced so it doesn't fire on every
+  // keystroke. Reuses the exact same conversion math as the real trade
+  // (via GET /v1/trades/preview -> TradesService.previewTrade(), which
+  // shares convertAmount()/toBinanceAsset() with executeTrade()) rather
+  // than re-implementing it here. Only runs while there's still a live
+  // cached price — a stale/expired quote can't be previewed, same as it
+  // can't be traded against.
+  useEffect(() => {
+    const hasValidPrice = price !== null && secondsLeft > 0;
+    const amount = Number(fromAmount);
+    if (!hasValidPrice || !Number.isFinite(amount) || amount <= 0) {
+      setPreview(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .previewTrade({ fromCurrency, toCurrency, fromAmount: amount, symbol: symbol.trim() })
+        .then((result) => {
+          if (!cancelled) setPreview({ toAmount: result.toAmount, toCurrency });
+        })
+        .catch(() => {
+          // A 409 (price expired mid-typing) or any other preview failure —
+          // this is just an estimate, not the real trade, so fail quietly
+          // rather than showing a scary error while someone is still typing.
+          if (!cancelled) setPreview(null);
+        });
+    }, PREVIEW_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [fromAmount, fromCurrency, toCurrency, symbol, price, secondsLeft]);
 
   async function handleFetchPrice() {
     setPriceLoading(true);
@@ -181,6 +221,12 @@ export function TradeView() {
             onChange={(e) => setFromAmount(e.target.value)}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
           />
+          {preview && (
+            <p className="mt-1 text-xs text-slate-500">
+              ≈ {preview.toAmount} {preview.toCurrency}{' '}
+              <span className="text-slate-400">(estimate)</span>
+            </p>
+          )}
         </div>
 
         <button

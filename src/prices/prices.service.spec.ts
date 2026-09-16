@@ -5,6 +5,7 @@ import { of, throwError } from 'rxjs';
 import { AxiosError, type AxiosHeaders } from 'axios';
 import { PricesService } from './prices.service.js';
 import { REDIS_CLIENT } from '../redis/redis.constants.js';
+import { TRADEABLE_PAIRS } from '../trades/currency-pairs.js';
 
 function makeAxiosError(response?: { data: unknown }): AxiosError {
   const error = new AxiosError('request failed');
@@ -133,6 +134,50 @@ describe('PricesService', () => {
       const result = await service.getCachedPriceOnly('BTCUSDT');
 
       expect(result.bid).toBe(200);
+    });
+  });
+
+  describe('getTradeablePairs', () => {
+    it('returns {symbol, base, quote, bid, ask} for all five fixed pairs, from cache, without calling Binance', async () => {
+      redisClient.get.mockImplementation((key: string) =>
+        Promise.resolve(
+          JSON.stringify({
+            symbol: key.replace('price:', ''),
+            bid: 100,
+            ask: 101,
+            timestamp: 1,
+            source: 'binance',
+          }),
+        ),
+      );
+
+      const result = await service.getTradeablePairs();
+
+      expect(result).toEqual(
+        TRADEABLE_PAIRS.map((pair) => ({
+          symbol: pair.symbol,
+          base: pair.base,
+          quote: pair.quote,
+          bid: 100,
+          ask: 101,
+        })),
+      );
+      expect(httpService.get).not.toHaveBeenCalled();
+    });
+
+    it('falls through to Binance (via getPrice) for any pair not already cached', async () => {
+      redisClient.get.mockResolvedValue(null);
+      httpService.get.mockImplementation((url: string) => {
+        const symbol = new URL(url).searchParams.get('symbol');
+        return of({ data: { symbol, bidPrice: '10.5', askPrice: '11.5' } });
+      });
+
+      const result = await service.getTradeablePairs();
+
+      expect(result).toHaveLength(TRADEABLE_PAIRS.length);
+      expect(httpService.get).toHaveBeenCalledTimes(TRADEABLE_PAIRS.length);
+      expect(redisClient.set).toHaveBeenCalledTimes(TRADEABLE_PAIRS.length);
+      expect(result.every((pair) => pair.bid === 10.5 && pair.ask === 11.5)).toBe(true);
     });
   });
 });

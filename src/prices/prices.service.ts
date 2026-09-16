@@ -9,6 +9,7 @@ import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
 import { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants.js';
+import { TRADEABLE_PAIRS } from '../trades/currency-pairs.js';
 
 @Injectable()
 export class PricesService {
@@ -63,5 +64,22 @@ export class PricesService {
   async getCachedPriceOnly(symbol: string) {
     const cached = await this.redisClient.get(`price:${symbol}`);
     return cached ? JSON.parse(cached) : null;
+  }
+
+  // Reuses getPrice()'s cache-aside logic for each fixed pair — no separate
+  // Binance-calling path, so this endpoint is just as cache-friendly (and
+  // just as rate-limit-safe) as a manual lookup would be.
+  async getTradeablePairs() {
+    const prices = await Promise.all(
+      TRADEABLE_PAIRS.map((pair) => this.getPrice(pair.symbol)),
+    );
+
+    return TRADEABLE_PAIRS.map((pair, i) => ({
+      symbol: pair.symbol,
+      base: pair.base,
+      quote: pair.quote,
+      bid: prices[i].bid,
+      ask: prices[i].ask,
+    }));
   }
 }
