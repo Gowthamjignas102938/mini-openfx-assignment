@@ -228,6 +228,36 @@ mode change to direct implementation.
     `.env` (same conditions as CI). Confirmed genuinely green on GitHub
     Actions afterward, not just locally.
 
+- **Second real bug, found by hand during a manual walkthrough (2026-09-16):**
+  not by an adversarial review this time — caught while explaining
+  `TradesService.executeTrade()` line by line and actually running a live
+  trade through the API to demonstrate it, which produced 7,716,670 "BTC"
+  from a 100 USD trade.
+  - **Conversion always multiplied, never divided.** `toAmount` was computed
+    as `fromAmount.times(price.bid)` unconditionally. A Binance symbol like
+    `BTCUSDT` quotes price as "USDT per 1 BTC" — multiplying is only correct
+    going base -> quote (BTC -> USD); the ordinary "buy BTC with USD"
+    direction (quote -> base) needs division. Every quote-to-base trade
+    silently over-credited the recipient currency.
+  - Root cause of it shipping unnoticed: the *existing* test for this method
+    only ever exercised the buggy direction (USD -> BTC) and asserted the
+    wrong multiplied result (~1000 BTC from 10 USD) as if it were correct —
+    a test that encodes the bug it should have caught.
+  - Fixed with a new `convertAmount()` helper in `trades.service.ts` that
+    resolves which currency is the symbol's base vs. quote side (mapping
+    this project's `USD` to Binance's `USDT` asset code, since Binance has
+    no literal "USD" asset), multiplies or divides accordingly, and rejects
+    with `400` if the symbol doesn't match the currency pair at all rather
+    than guessing.
+  - Regression tests added for both directions explicitly (quote -> base
+    and base -> quote), asserting the actual numeric result, plus a test for
+    the symbol-mismatch rejection. The previous test's incorrect expected
+    value was corrected rather than left alongside the new ones.
+  - Verified twice: full suite (`npm test`, `npm run test:e2e`) green, and a
+    real live trade against the running app (100 USD -> BTC at a real fetched
+    price) produced the mathematically correct 0.001317 BTC with matching
+    balance changes, not just a passing assertion.
+
 A living project overview (architecture, data model, the 15s-expiry
 mechanism, trade-offs) is maintained in Notion — ask the person for the
 link if it's not already in context, rather than assuming it's stale.
