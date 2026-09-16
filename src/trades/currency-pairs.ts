@@ -8,9 +8,16 @@
  * base/quote convention: a symbol's price is quote-currency units per 1
  * unit of base currency (e.g. BTCUSDT's price is USD per 1 BTC).
  *
- * This is the single source of truth for which pairs are tradeable —
- * both `GET /v1/prices/pairs` and `TradesService`'s conversion logic
- * should read from here rather than re-deriving the list.
+ * This is meant to be the single source of truth for which pairs are
+ * "officially" tradeable, and `GET /v1/prices/pairs` does read from here.
+ * `TradesService`'s conversion logic (`convertAmount()`/
+ * `CURRENCY_TO_BINANCE_ASSET` in `trades.service.ts`) currently does NOT —
+ * it independently re-derives direction by concatenating currency codes,
+ * so it will accept any live Binance symbol whose two assets match the
+ * requested currencies, not only the five listed below. That's a known
+ * gap (see README's "Assumptions & scope"), not something fixed here
+ * silently — closing it would mean `TradesService` importing and checking
+ * against this list too.
  */
 export interface CurrencyPair {
   symbol: string;

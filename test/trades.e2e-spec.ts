@@ -47,6 +47,7 @@ describe('Trades (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .post('/v1/trades')
+      .set('x-api-key', process.env.API_KEY!)
       .send({ fromCurrency: 'USD', toCurrency: 'USD', fromAmount: 100, symbol: 'BTCUSDT' })
       .expect(400);
 

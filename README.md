@@ -80,9 +80,17 @@ for what was consciously left out.
 
 ## API reference
 
-Every route lives under `/v1`, except the root health check.
+Every route lives under `/v1`, except the root health check. Every `/v1/*`
+route requires an `X-API-Key` header matching the server's `API_KEY`
+environment variable — one shared secret for the whole API, not a
+per-client key (there's still no `clients` table; see Design decisions
+below). A request with a missing or wrong key gets `401 Unauthorized`
+before it reaches any route handler.
 
 ### `GET /`
+
+No `X-API-Key` required — health checks and uptime monitors can't be
+expected to send a secret header.
 
 ```bash
 curl http://localhost:3000/
@@ -96,7 +104,8 @@ Hello World!
 Fetches Binance bid/ask for a symbol, cache-aside via Redis (15s TTL).
 
 ```bash
-curl "http://localhost:3000/v1/prices?symbol=BTCUSDT"
+curl "http://localhost:3000/v1/prices?symbol=BTCUSDT" \
+  -H "X-API-Key: $API_KEY"
 ```
 ```json
 {"symbol":"BTCUSDT","bid":77567.44,"ask":77567.45,"timestamp":1789451780622,"source":"binance"}
@@ -108,7 +117,8 @@ if Binance is unreachable or returns something unparseable.
 ### `GET /v1/balances`
 
 ```bash
-curl http://localhost:3000/v1/balances
+curl http://localhost:3000/v1/balances \
+  -H "X-API-Key: $API_KEY"
 ```
 ```json
 [{"currency":"INR","amount":"0.000000","updatedAt":"..."},{"currency":"USD","amount":"10000.000000","updatedAt":"..."},{"currency":"BTC","amount":"0.000000","updatedAt":"..."}]
@@ -117,7 +127,8 @@ curl http://localhost:3000/v1/balances
 ### `GET /v1/balances/:currency`
 
 ```bash
-curl http://localhost:3000/v1/balances/USD
+curl http://localhost:3000/v1/balances/USD \
+  -H "X-API-Key: $API_KEY"
 ```
 
 `404` if the currency doesn't exist.
@@ -130,6 +141,7 @@ Executes a trade against a **currently cached** price — fetch one via
 ```bash
 curl -X POST http://localhost:3000/v1/trades \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
   -d '{"fromCurrency":"USD","toCurrency":"BTC","fromAmount":100,"symbol":"BTCUSDT"}'
 ```
 ```json
@@ -153,7 +165,8 @@ balances and the `trades` table completely unchanged.
 Trade history, newest-first.
 
 ```bash
-curl "http://localhost:3000/v1/trades?limit=10"
+curl "http://localhost:3000/v1/trades?limit=10" \
+  -H "X-API-Key: $API_KEY"
 ```
 
 `limit` is optional, clamped to `[1, 200]`, defaults to `50`.
@@ -214,9 +227,24 @@ shape given the time available:
   build instead has one `trades` table and one `balances` table, with the
   15-second validity check happening inline (via Redis's own TTL expiry) at
   trade time, not as its own stored, stateful object.
-- **Auth / multi-tenancy.** No `clients` table, no API keys — a single
-  hardcoded demo wallet. The brief doesn't require multi-client auth, and
-  adding one would be scope the evaluation criteria doesn't ask for.
+- **Auth / multi-tenancy.** Still no `clients` table — a single hardcoded
+  demo wallet. What auth exists (added later, once the brief's assignment
+  wrapper explicitly required protecting the API) is one shared `API_KEY`
+  checked on every `/v1/*` request, not per-client keys. The brief doesn't
+  require multi-client auth, and adding one would be scope the evaluation
+  criteria doesn't ask for.
+- **The shared API key isn't a real secret once it's in the React
+  frontend.** If the frontend calls this API directly with the key
+  embedded client-side (e.g. a `VITE_API_KEY` baked into the Vite build and
+  read into a fetch header), anyone can read it straight out of the
+  browser's network tab or the shipped JS bundle — a build-time env var in
+  a static frontend isn't confidential. Worth naming honestly rather than
+  implying this makes the API actually private: for this assignment's
+  scope (a single shared secret, no real per-user accounts either way) it
+  keeps casual/automated hits off the API, which is the actual goal here,
+  not defense against a targeted attacker with browser dev tools open. A
+  real deployment would need the frontend to talk to a backend-for-frontend
+  or session layer instead of holding the shared secret itself.
 - **A funding/deposit endpoint.** Balances are seeded automatically at
   startup instead (`npm run db:seed`, idempotent via `onConflictDoNothing`).
 - **An alternate stack** (Hono, Zod, Vitest, Neon serverless Postgres) —
@@ -265,10 +293,17 @@ back to `.ts` source) since this project runs as native ESM under
     trade direction" — same as any other pair without a matching Binance
     symbol. Not a bug; this project only ever resolves one Binance symbol
     per trade, never a triangulated route through a third currency.
-- A trade's `symbol` (e.g. `BTCUSDT`) isn't cross-validated against its
-  `fromCurrency`/`toCurrency` pair — a client could technically pass a
-  `symbol` unrelated to the two currencies. Not enforced; noted as a known
-  gap rather than fixed silently.
+- A trade's `symbol` (e.g. `BTCUSDT`) **is** validated against its
+  `fromCurrency`/`toCurrency` pair — `convertAmount()` in `trades.service.ts`
+  rejects a mismatch with `400 Cannot determine trade direction` (this
+  wasn't always true; see the conversion-direction bugfix below). What's
+  **not** enforced: whether that symbol is actually one of the five pairs
+  this project treats as "tradeable" (`TRADEABLE_PAIRS` in
+  `currency-pairs.ts`) — any live Binance symbol whose two assets match
+  `fromCurrency`/`toCurrency` will execute, even one outside that fixed
+  list. Noted as a known gap rather than fixed silently; restricting trades
+  to exactly the five listed pairs would be a real (if small) scope
+  decision, not a bug fix.
 - No pagination beyond a simple `limit` on trade history — no cursor-based
   paging, matching the "simpler model" decision above.
 

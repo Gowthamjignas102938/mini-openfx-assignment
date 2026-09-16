@@ -34,6 +34,8 @@ services:
           property: connectionString
       - key: PORT
         value: 3000
+      - key: API_KEY
+        sync: false   # never committed — set the real secret in the Render dashboard
 
   - type: web
     name: miniopenfx-frontend
@@ -46,3 +48,8 @@ services:
       # api service above, or if Render suffixes the name for uniqueness.
       - key: VITE_API_BASE_URL
         value: https://miniopenfx-api.onrender.com/v1
+      - key: VITE_API_KEY
+        sync: false   # must be set to the exact same value as miniopenfx-api's
+                       # API_KEY above — Render Blueprints can't cross-reference
+                       # one service's manually-entered secret into another, so
+                       # this has to be copied by hand in the dashboard

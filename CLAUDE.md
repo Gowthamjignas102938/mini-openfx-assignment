@@ -24,8 +24,12 @@ first.
 
 ## Locked-in scope decisions (do not silently change these)
 
-- **Single hardcoded demo wallet.** No auth, no `clients`/users table. Every
-  endpoint operates on "the" one wallet.
+- **Single hardcoded demo wallet.** No `clients`/users table — every
+  endpoint operates on "the" one wallet. **Updated 2026-09-16:** the
+  assignment brief separately required protecting the API, so there is now
+  one shared `API_KEY` (an `X-API-Key` header) required on every `/v1/*`
+  route — but still just one secret for the whole API, not per-client keys
+  or a `clients` table. See "Post-Module-14 additions" in Current status.
 - **Balances are seeded automatically at startup** with fixed starting
   amounts. No funding/deposit endpoint.
 - **A fetched price is valid for 15 seconds.** A trade attempted against an
@@ -47,9 +51,11 @@ first.
 - **Deliberately considered and rejected**, worth naming in the README's
   trade-offs section rather than silently forgetting: a richer
   indicative-price / firm-quote / ledger-entries model, idempotency keys, a
-  real `clients` + API-key auth table, and an alternate stack (Hono, Zod,
-  Vitest, Neon serverless Postgres). All reasonable ideas, all consciously
-  set aside for a simpler, faster-to-build shape given the time available.
+  real `clients` table with **per-client** API keys, and an alternate stack
+  (Hono, Zod, Vitest, Neon serverless Postgres). All reasonable ideas, all
+  consciously set aside for a simpler, faster-to-build shape given the time
+  available. (A single *shared* API key was later added — see the update
+  above — but that's still not per-client auth.)
 
 ## Working agreement — how to operate in this project
 
@@ -86,8 +92,8 @@ first.
 
 ## Current status
 
-Last updated by Claude, 2026-09-16, after adding the tradeable-pairs list
-and live trade preview on top of the Module 14 frontend.
+Last updated by Claude, 2026-09-16, after adding the shared API-key auth
+layer and fixing findings from an independent /code-review pass on it.
 
 - **Module 00 (orientation/product thinking): done.** Scope decisions above
   are final.
@@ -302,6 +308,87 @@ and live trade preview on top of the Module 14 frontend.
     one), so `TradeView.tsx` can't directly import `currency-pairs.ts`;
     unifying it would mean having `TradeView` call `GET /v1/prices/pairs`
     itself, which wasn't part of what was asked for this pass.
+
+- **Shared API-key auth layer (2026-09-16): done, then independently
+  reviewed and fixed further.** The assignment brief separately required
+  protecting the API, so — same spirit as the project's "single demo
+  wallet, no multi-tenancy" design — one shared secret was added, not a
+  `clients` table:
+  - `ApiKeyGuard` (`src/common/api-key.guard.ts`), registered as a global
+    `APP_GUARD` in `AppModule` (not `app.useGlobalGuards()` in
+    `bootstrap.ts`, so it's visible to Nest's DI and picked up identically
+    by `main.ts` and every `TestingModule`-based e2e test). Reads
+    `X-API-Key`, compares it to `process.env.API_KEY`. The `API_KEY`
+    presence check lives in the guard's constructor, not `canActivate()` —
+    since it's instantiated once at app startup, a missing `API_KEY` now
+    fails the app to boot instead of quietly comparing every request
+    against `undefined` (which a header-less request would also read as
+    `undefined`, making an unset key fail *open*, not closed).
+  - `@Public()` (`src/common/public.decorator.ts`, `SetMetadata` +
+    `Reflector`) exempts exactly one route: root `GET /`, since health
+    checks/uptime monitors can't send a secret header.
+  - `.env.example`/`.env`, CI's `env:` block, `render.yaml` (`sync: false`
+    on `miniopenfx-api`), `DEPLOY.md`'s manual checklist, and every `/v1`
+    curl example in `README.md` all updated to match.
+  - **Independent review, done at the person's request via `/code-review`
+    run as a background agent:** it found 10 real issues against this
+    diff. Two were genuinely severe and are exactly the kind of thing this
+    file's "first thing to do" instruction exists to catch — a fresh
+    session inspecting the repo cold could easily have missed them too:
+    - **The frontend never sent the new required header at all** —
+      shipping the guard and the frontend changes together would have
+      401'd every single Prices/Balances/Trade/History call, breaking the
+      whole app, local and deployed. Fixed: `VITE_API_KEY`, read into
+      `api/client.ts`'s request headers, added to `frontend/.env(.example)`
+      and to `miniopenfx-frontend` in `render.yaml` (also `sync: false` —
+      Render Blueprints can't cross-reference one service's manual secret
+      into another, so this has to be copied by hand to match `API_KEY`).
+    - **The live trade-preview effect in `TradeView.tsx` (added last
+      session) re-fired roughly once a second**, not just on user input —
+      its dependency array included raw `secondsLeft` (which ticks every
+      1000ms) instead of the derived `hasValidPrice` boolean, silently
+      contradicting its own "debounced" comment and hammering the backend
+      the entire time a price was held valid. Fixed by depending on
+      `hasValidPrice` instead, which only flips at the moment a price is
+      fetched or actually expires.
+    - Also fixed: the API key was compared with plain `!==` (a timing
+      side-channel on this project's now-sole auth mechanism) — switched
+      to `crypto.timingSafeEqual`. `PreviewTradeDto` was missing the same
+      `IsDifferentCurrency` check `CreateTradeDto` has, so a same-currency
+      preview fell through to a confusing generic error instead of the
+      specific one — the check was pulled out to a shared
+      `src/common/validators/is-different-currency.validator.ts` so both
+      DTOs use the identical decorator. A stale README bullet claiming a
+      trade's symbol "isn't cross-validated" against its currencies — true
+      when written, false since the earlier conversion-direction bugfix —
+      was corrected, and `currency-pairs.ts`'s docstring was softened
+      since it overclaimed being read by `TradesService` when only
+      `GET /v1/prices/pairs` actually reads it.
+    - **Left as flagged, known gaps, not silently fixed:** `TradesService`
+      doesn't actually restrict trades to the five `TRADEABLE_PAIRS` —
+      any live Binance symbol whose two assets match the requested
+      currencies will execute (restricting that would be a real scope
+      decision); `GET /v1/prices/pairs` fetches all five via `Promise.all`,
+      so one failing symbol blanks the whole response instead of degrading
+      gracefully (a response-shape decision); `convertAmount()`'s
+      direction check runs inside the transaction after row locks are
+      already held, which is a minor lock-contention inefficiency but not
+      safely reorderable without changing which error message wins when a
+      request is *both* an unknown currency and a symbol mismatch (an
+      existing test pins that ordering).
+    - **A genuine process near-miss, worth recording:** the `/code-review`
+      background agent independently reached the same fix for the
+      `PreviewTradeDto` gap at the same time as the main session, and both
+      briefly edited `create-trade.dto.ts`'s import concurrently — caught
+      immediately (a file-changed-since-read error surfaced it), reconciled
+      by standardizing on one shared validator file location and
+      explicitly telling the background agent to stop editing. No data was
+      lost, but running a review agent and continuing to hand-edit the
+      same files at the same time is a real hazard, not a hypothetical one.
+  - Verified: `npm run lint`, `npm run typecheck`, `npm test`, and
+    `npm run test:e2e` all green (same one pre-existing, unrelated
+    `balances.service.spec.ts` failure as the entry above), plus the
+    frontend's own `tsc -b`/`oxlint`.
 
 A living project overview (architecture, data model, the 15s-expiry
 mechanism, trade-offs) is maintained in Notion — ask the person for the

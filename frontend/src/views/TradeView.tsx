@@ -33,6 +33,8 @@ export function TradeView() {
 
   const [preview, setPreview] = useState<{ toAmount: string; toCurrency: string } | null>(null);
 
+  const hasValidPrice = price !== null && secondsLeft > 0;
+
   // Client-side countdown mirroring the backend's real 15s Redis TTL — a UX
   // hint, not the source of truth. The server's cache is what actually
   // decides; this just helps the person understand why a late submit fails.
@@ -55,9 +57,12 @@ export function TradeView() {
   // cached price — a stale/expired quote can't be previewed, same as it
   // can't be traded against.
   useEffect(() => {
-    const hasValidPrice = price !== null && secondsLeft > 0;
+    if (!hasValidPrice) {
+      setPreview(null);
+      return;
+    }
     const amount = Number(fromAmount);
-    if (!hasValidPrice || !Number.isFinite(amount) || amount <= 0) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       setPreview(null);
       return;
     }
@@ -81,7 +86,13 @@ export function TradeView() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [fromAmount, fromCurrency, toCurrency, symbol, price, secondsLeft]);
+    // hasValidPrice (not raw secondsLeft) is the dependency on purpose: it
+    // only flips true<->false at the moment a price is fetched or expires,
+    // whereas secondsLeft changes every second. Depending on secondsLeft
+    // directly would tear down and restart this debounce timer once a
+    // second the whole time a price is valid, firing a preview request
+    // roughly every second instead of only when the person actually types.
+  }, [fromAmount, fromCurrency, toCurrency, symbol, hasValidPrice]);
 
   async function handleFetchPrice() {
     setPriceLoading(true);
@@ -134,8 +145,6 @@ export function TradeView() {
       setSubmitting(false);
     }
   }
-
-  const hasValidPrice = price !== null && secondsLeft > 0;
 
   return (
     <div className="max-w-md">

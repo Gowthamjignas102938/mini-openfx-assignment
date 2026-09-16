@@ -14,7 +14,11 @@ interface ExecuteTradeInput {
 
 // Binance has no "USD" asset — its pairs quote against "USDT". This project's
 // currency code is "USD", so it needs translating before it can be compared
-// against a Binance symbol like "BTCUSDT".
+// against a Binance symbol like "BTCUSDT". Kept separate from
+// currency-pairs.ts's TRADEABLE_PAIRS on purpose for now — this map is a
+// pure code-translation table, not a statement of which pairs are
+// "officially" tradeable — but the two do need to be kept in sync by hand if
+// a future pair introduces another asset needing translation.
 const CURRENCY_TO_BINANCE_ASSET: Record<string, string> = { USD: 'USDT' };
 
 function toBinanceAsset(currency: string): string {

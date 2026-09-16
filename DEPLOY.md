@@ -26,14 +26,21 @@ committed to this repo.
 2. On [render.com](https://render.com) → **New** → **Blueprint** → connect
    the `mini-openfx` GitHub repo → Render reads `render.yaml` and shows the
    four resources above → **Apply**.
-3. First deploy takes a few minutes (Postgres provisions, the Docker image
+3. Set `API_KEY` on `miniopenfx-api` in the Render dashboard to a real
+   generated secret before going live — it's `sync: false` in `render.yaml`
+   specifically so it's never committed; Render will prompt for it during
+   Apply, or it can be added afterward under the service's Environment tab.
+   Then set `VITE_API_KEY` on `miniopenfx-frontend` to that exact same
+   value — Render can't cross-reference one service's manual secret into
+   another, so this one has to be copied by hand.
+4. First deploy takes a few minutes (Postgres provisions, the Docker image
    builds, migrations + seed run via `preDeployCommand`, then the app boots).
-4. Once `miniopenfx-api` has a real URL, check it matches
+5. Once `miniopenfx-api` has a real URL, check it matches
    `VITE_API_BASE_URL` in `render.yaml` (`https://miniopenfx-api.onrender.com/v1`).
    Render usually keeps the exact name you gave the service, but if it
    suffixed it for uniqueness, update that one line and push again — the
    frontend won't be able to reach the API otherwise.
-5. Open the `miniopenfx-frontend` URL — that's your deployed app.
+6. Open the `miniopenfx-frontend` URL — that's your deployed app.
 
 ## Known free-tier caveats (worth knowing, not blockers)
 
