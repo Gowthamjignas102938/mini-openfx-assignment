@@ -1,0 +1,245 @@
+{
+  "info": {
+    "_postman_id": "39180e6e-1f64-40c7-a4d3-4165bce5b31b",
+    "name": "MiniOpenFX API",
+    "description": "FX quoting + trading API. Every /v1/* request needs X-API-Key (set once at the collection level below) except the root health check.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "X-API-Key",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{api_key}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                ""
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Prices",
+      "item": [
+        {
+          "name": "Get Price by Symbol",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/prices?symbol=BTCUSDT",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "prices"
+              ],
+              "query": [
+                {
+                  "key": "symbol",
+                  "value": "BTCUSDT"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Tradeable Pairs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/prices/pairs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "prices",
+                "pairs"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Balances",
+      "item": [
+        {
+          "name": "List Balances",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/balances",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "balances"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Balance by Currency",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/balances/USD",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "balances",
+                "USD"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Trades",
+      "item": [
+        {
+          "name": "Preview Trade",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/trades/preview?fromCurrency=USD&toCurrency=BTC&fromAmount=100&symbol=BTCUSDT",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "trades",
+                "preview"
+              ],
+              "query": [
+                {
+                  "key": "fromCurrency",
+                  "value": "USD"
+                },
+                {
+                  "key": "toCurrency",
+                  "value": "BTC"
+                },
+                {
+                  "key": "fromAmount",
+                  "value": "100"
+                },
+                {
+                  "key": "symbol",
+                  "value": "BTCUSDT"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Execute Trade",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromCurrency\": \"USD\",\n  \"toCurrency\": \"BTC\",\n  \"fromAmount\": 100,\n  \"symbol\": \"BTCUSDT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/trades",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "trades"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Trade History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/trades?limit=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "trades"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://miniopenfx-api.onrender.com"
+    },
+    {
+      "key": "api_key",
+      "value": "REPLACE_WITH_YOUR_API_KEY"
+    }
+  ]
+}

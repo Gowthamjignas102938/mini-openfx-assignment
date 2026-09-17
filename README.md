@@ -20,6 +20,7 @@ corner being cut.
 - [API reference](#api-reference)
 - [Setup & running locally](#setup--running-locally)
 - [Testing](#testing)
+- [Testing with Postman](#testing-with-postman)
 - [Design decisions & trade-offs](#design-decisions--trade-offs)
 - [Assumptions & scope](#assumptions--scope)
 - [What I'd do next](#what-id-do-next)
@@ -257,6 +258,36 @@ exactly the kind of behavior a mocked database couldn't meaningfully verify.
 CI (`.github/workflows/ci.yml`) runs this same sequence — plus a real
 migrate + seed — against fresh Postgres/Redis service containers on every
 push.
+
+## Testing with Postman
+
+The `curl` examples above work fine, but clicking through named requests is
+faster for a demo (e.g. a walkthrough video) than retyping commands. A
+ready-made collection lives in [`postman/`](./postman):
+
+- `miniopenfx.postman_collection.json` — every endpoint above (health
+  check, prices, prices/pairs, balances, trades, trades/preview, trade
+  history) with example params/bodies already filled in. `X-API-Key` is
+  set once at the collection level (`{{api_key}}`) and inherited by every
+  request — the health check opts out since it doesn't need it.
+- `miniopenfx.postman_environment.json` — a "Render (Production)"
+  environment with `base_url` pointing at the live API and an empty
+  `api_key` variable for you to fill in.
+
+To use it:
+
+1. In Postman: `File > Import`, drag in both JSON files from `postman/`.
+2. Pick "MiniOpenFX - Render (Production)" from the environment dropdown
+   (top right).
+3. Open that environment, paste your real `API_KEY` value into `api_key`,
+   save.
+4. Open any request in the collection and hit **Send** — "List Tradeable
+   Pairs" is a good first one, then "Execute Trade" followed by "Get Trade
+   History" to see a full round trip.
+
+To point the same collection at a local `npm run start:dev` instance
+instead, duplicate the environment and change `base_url` to
+`http://localhost:3000`.
 
 ## Design decisions & trade-offs
 
