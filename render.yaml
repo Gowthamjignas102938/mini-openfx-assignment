@@ -6,12 +6,15 @@
 databases:
   - name: miniopenfx-db
     plan: free          # NB: Render's free Postgres auto-expires 30 days after creation
+    region: singapore   # must match miniopenfx-api's region — Render's internal
+                        # DATABASE_URL hostname only resolves within the same region
     databaseName: miniopenfx
     user: miniopenfx
 
 services:
   - type: keyvalue       # Render's current name for a managed Redis-protocol instance
     name: miniopenfx-redis
+    region: singapore    # must match miniopenfx-api — same cross-region DNS reason as the db
     plan: free           # free plan = in-memory only, data lost on restart — fine here,
     ipAllowList: []       # since cached prices are meant to expire in 15s anyway
 

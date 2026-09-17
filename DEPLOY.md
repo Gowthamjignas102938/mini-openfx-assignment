@@ -50,24 +50,38 @@ committed to this repo.
 
 Binance's public API rejects requests from the US ("Service unavailable from
 a restricted location according to 'b. Eligibility'") — this is Binance's
-own geo-block, not a bug here. `render.yaml` now pins `miniopenfx-api` to
-`region: singapore` instead of Render's `oregon` default. Postgres and Redis
-stay in `oregon` — they never call Binance, so their region doesn't matter,
-and moving them isn't worth the extra cross-region hop.
+own geo-block, not a bug here. `render.yaml` pins `miniopenfx-api` to
+`region: singapore` instead of Render's `oregon` default.
 
-**Render can't change an existing service's region in place.** If you
-already deployed `miniopenfx-api` in Oregon before this fix, you have to
-recreate it:
+**Postgres and Redis must be in the same region as the API, not just
+"wherever."** The first attempt at this fix moved only `miniopenfx-api` and
+left the database/Redis in Oregon — that broke migrations with
+`getaddrinfo ENOTFOUND dpg-...-a`, because Render's `DATABASE_URL`/
+`REDIS_URL` point at *internal* hostnames that only resolve within the same
+region. There's no cross-region internal networking on Render, so all three
+(`miniopenfx-db`, `miniopenfx-redis`, `miniopenfx-api`) are now pinned to
+`singapore` together. The static frontend is unaffected — it's served
+globally regardless of region.
 
-1. Note down your current `API_KEY` value first (Environment tab) — deleting
-   the service deletes its env vars too, and Render will re-prompt for
-   `sync: false` vars when it's recreated.
-2. In the Render dashboard, delete only the `miniopenfx-api` service (leave
-   `miniopenfx-db`, `miniopenfx-redis`, `miniopenfx-frontend` alone).
-3. Go to the Blueprint (`mini-openfx1`) → **Manual Sync**. Render sees
-   `miniopenfx-api` is declared in `render.yaml` but missing, and recreates
-   it fresh — this time in Singapore.
-4. Re-enter `API_KEY` on the recreated service with the value from step 1.
+**Render can't change an existing service's or database's region in
+place.** If you already deployed any of these in Oregon before this fix,
+you have to recreate them:
+
+1. Note down your current `API_KEY` value first (Environment tab on
+   `miniopenfx-api`) — deleting a service deletes its env vars too, and
+   Render will re-prompt for `sync: false` vars when it's recreated.
+2. In the Render dashboard, delete `miniopenfx-db`, `miniopenfx-redis`, and
+   `miniopenfx-api` (leave `miniopenfx-frontend` alone — it doesn't need to
+   move). **Deleting the database wipes its data** — fine here, since
+   `npm run db:seed` (chained into the Dockerfile's `CMD`) reseeds the
+   starting balances automatically on next boot; any trades you'd already
+   made against the old Oregon instance won't survive, only a concern if
+   you care about that history.
+3. Go to the Blueprint (`mini-openfx1`) → **Manual Sync**. Render sees all
+   three declared in `render.yaml` but missing, and recreates them fresh —
+   this time all in Singapore.
+4. Re-enter `API_KEY` on the recreated `miniopenfx-api` with the value from
+   step 1.
 5. Re-check `VITE_API_BASE_URL` in `render.yaml` still matches its URL
    (Render keeps the same `https://miniopenfx-api.onrender.com` naming
    since the service name didn't change, but confirm).
