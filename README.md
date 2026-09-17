@@ -9,7 +9,7 @@ UI), so "API-only" is the actual shape of the product being modelled, not a
 corner being cut.
 
 - **Loom walkthrough:** _add link here before submitting_
-- **Deployed instance:** _not deployed — see [What I'd do next](#what-id-do-next)_
+- **Deployed instance:** [Live app](https://miniopenfx-frontend.onrender.com) · [API base](https://miniopenfx-api.onrender.com/v1) — see [DEPLOY.md](./DEPLOY.md) for how this was deployed (Render Blueprint: Postgres + Redis + Dockerized API + static frontend, all co-located in `singapore` since Binance blocks US-region IPs). Free-tier caveats apply — see DEPLOY.md (the API may take ~30s to wake up from an idle spin-down on first request).
 
 ---
 
@@ -114,6 +114,27 @@ curl "http://localhost:3000/v1/prices?symbol=BTCUSDT" \
 Errors: `400` if `symbol` is missing or Binance rejects it as unknown; `502`
 if Binance is unreachable or returns something unparseable.
 
+### `GET /v1/prices/pairs`
+
+Lists the five currency pairs this app actually treats as tradeable
+(`TRADEABLE_PAIRS` in `src/trades/currency-pairs.ts`), each with a live
+bid/ask pulled through the same cache-aside `getPrice()` path as the
+endpoint above — so listing pairs costs no extra Binance calls beyond
+normal caching. Powers the frontend's Prices tab table (click a row to
+fill the lookup above).
+
+```bash
+curl http://localhost:3000/v1/prices/pairs \
+  -H "X-API-Key: $API_KEY"
+```
+```json
+[{"symbol":"BTCUSDT","base":"BTC","quote":"USD","bid":77567.44,"ask":77567.45},
+ {"symbol":"EURUSDT","base":"EUR","quote":"USD","bid":1.0842,"ask":1.0843},
+ {"symbol":"BTCEUR","base":"BTC","quote":"EUR","bid":71532.10,"ask":71534.90},
+ {"symbol":"USDTMXN","base":"USD","quote":"MXN","bid":18.42,"ask":18.44},
+ {"symbol":"BTCMXN","base":"BTC","quote":"MXN","bid":1429000.0,"ask":1429500.0}]
+```
+
 ### `GET /v1/balances`
 
 ```bash
@@ -159,6 +180,27 @@ Both balance updates and the trade-history insert happen inside one
 database transaction — either all three writes land, or none do. Verified
 directly: a deliberately oversized trade is rejected with `400` and leaves
 balances and the `trades` table completely unchanged.
+
+### `GET /v1/trades/preview`
+
+Read-only: shows what a trade *would* return, against the same currently
+cached price `POST /v1/trades` would use, without touching the database or
+balances at all (no transaction, no writes — just `convertAmount()` run
+against the cached price). Powers the Trade tab's live "≈ X CURRENCY"
+estimate as the amount field is typed (debounced client-side).
+
+```bash
+curl "http://localhost:3000/v1/trades/preview?fromCurrency=USD&toCurrency=BTC&fromAmount=100&symbol=BTCUSDT" \
+  -H "X-API-Key: $API_KEY"
+```
+```json
+{"fromAmount":"100.000000","toAmount":"0.001289","rate":"77567.44000000","symbol":"BTCUSDT"}
+```
+
+Errors: same `409 Conflict` as `POST /v1/trades` if no valid price is
+currently cached for `symbol`; `400` for the same validation failures
+(currencies must differ and be exactly 3 characters, `fromAmount` must be
+a positive number).
 
 ### `GET /v1/trades`
 
@@ -309,9 +351,20 @@ back to `.ts` source) since this project runs as native ESM under
 
 ## What I'd do next
 
-- Deploy the service (Render/Railway/Fly.io) with a managed Postgres +
-  Redis — explicit bonus, not done here for time reasons.
-- Validate that a trade's `symbol` actually corresponds to its
-  `fromCurrency`/`toCurrency` pair.
-- The bonus React + Tailwind frontend (explicitly out of scope until the
-  graded backend, Modules 00–13, is solid).
+- **Deployed** — see the links at the top of this file and [DEPLOY.md](./DEPLOY.md)
+  for the Render Blueprint setup (Postgres + Redis + Dockerized API +
+  static frontend).
+- **Frontend built and deployed** — a React + Vite app covering Prices
+  (with the tradeable-pairs table), Trade (with the live preview),
+  Balances, and Trade History, talking to the API with the shared
+  `X-API-Key`.
+- **Trade `symbol`-vs-currency validation is in place** — `convertAmount()`
+  rejects a mismatched symbol with `400`; see "Assumptions & scope" above
+  for the one remaining related gap (a trade isn't restricted to exactly
+  the five `TRADEABLE_PAIRS`, just to *some* live Binance symbol matching
+  the requested currencies).
+- Restrict `POST /v1/trades` / `GET /v1/trades/preview` to exactly the
+  five pairs in `TRADEABLE_PAIRS`, instead of accepting any live Binance
+  symbol whose two assets match the requested currencies.
+- Per-client API keys / real multi-tenancy, if this ever needed to serve
+  more than one demo wallet.
