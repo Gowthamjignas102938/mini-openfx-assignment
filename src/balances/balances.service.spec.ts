@@ -17,6 +17,8 @@ describe('BalancesService (integration)', () => {
       USD: '42.000000',
       INR: '0.000000',
       BTC: '0.000000',
+      EUR: '0.000000',
+      MXN: '0.000000',
     })) {
       await db
         .insert(balances)
@@ -32,10 +34,10 @@ describe('BalancesService (integration)', () => {
     await db.$client.end();
   });
 
-  it('getAllBalances returns all three seeded currencies', async () => {
+  it('getAllBalances returns all five seeded currencies', async () => {
     const result = await service.getAllBalances();
     const currencies = result.map((row) => row.currency).sort();
-    expect(currencies).toEqual(['BTC', 'INR', 'USD']);
+    expect(currencies).toEqual(['BTC', 'EUR', 'INR', 'MXN', 'USD']);
   });
 
   it('getBalance returns the matching row for a known currency', async () => {
