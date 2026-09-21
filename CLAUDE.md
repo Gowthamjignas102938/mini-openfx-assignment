@@ -89,11 +89,18 @@ first.
    explanation and its own commit — never a giant multi-module rewrite in one
    pass. Update "Current status" below as each module actually lands, so this
    file stays accurate without needing to be relayed back from Claude chat.
+8. **Commits in this repo must show only the person's own name/email as
+   author — no `Co-Authored-By: Claude` trailer, no PR-description
+   "Generated with Claude Code" footer.** This overrides Claude Code's
+   default attribution reminder for every commit and PR made in this
+   project, per the person's explicit instruction (2026-09-21). Author
+   identity comes from `git config user.name`/`user.email` as already set
+   in this repo; do not add any co-author trailer on top of it.
 
 ## Current status
 
-Last updated by Claude, 2026-09-16, after adding the shared API-key auth
-layer and fixing findings from an independent /code-review pass on it.
+Last updated by Claude, 2026-09-21, after recovering the repo's real commit
+history on GitHub and re-pointing the live Render deployment at it.
 
 - **Module 00 (orientation/product thinking): done.** Scope decisions above
   are final.
@@ -158,11 +165,12 @@ layer and fixing findings from an independent /code-review pass on it.
   response captured — not hand-typed), setup instructions (matches
   what CI runs), testing, and design decisions/trade-offs. Also removed
   the long-flagged `RatesModule` placeholder (teaching purpose served
-  back in Module 02). Still open: (1) record and link the 5-10 min Loom
-  walkthrough the brief requires — a presentation-plan outline for it
-  already exists in the Notion doc; (2) optional bonus deployment
-  (Render/Railway/Fly.io) — not attempted, no cloud credentials
-  available and it's explicitly bonus, not mandatory.
+  back in Module 02). **Updated 2026-09-21: the optional bonus deployment
+  was in fact done** (Render — see the dated entry below for the full
+  story of getting it correctly wired up) — this bullet previously said
+  "not attempted," which was stale. Still open: record and link the
+  5-10 min Loom walkthrough the brief requires — a presentation-plan
+  outline for it already exists in the Notion doc.
 - **Module 14 (React + Tailwind frontend): done.** Backend re-verified
   solid first (per explicit instruction) — `/v1` versioning, validation,
   and error handling spot-checked live; full suite green; GitHub Actions
@@ -389,6 +397,55 @@ layer and fixing findings from an independent /code-review pass on it.
     `npm run test:e2e` all green (same one pre-existing, unrelated
     `balances.service.spec.ts` failure as the entry above), plus the
     frontend's own `tsc -b`/`oxlint`.
+
+- **Repo-history recovery, GitHub cleanup, and live deployment
+  re-pointing (2026-09-21): done.** A session that started as "fix a
+  failing CI run" (the `balances.service.spec.ts` 3-vs-5-currency
+  assertion above) uncovered a much bigger problem: this working
+  directory (`~/Mini-OpenFX`, the one actually live on GitHub as
+  `mini-openfx-assignment`) had only ever had **one** flattened
+  "Intial Commit" — none of the per-module history this file describes.
+  The real 39-commit history existed only in a separate, nested git
+  repo at `~/Mini-OpenFX/mini-openfx/`, itself pointed at a GitHub
+  remote (`mini-openfx-assignment-`, trailing dash) that no longer
+  exists (404). Diffing the two confirmed identical file content, so
+  nothing was actually lost — just disconnected from the live remote.
+  - **Fixed by:** pushing the inner repo's real history to a safety-net
+    branch on the live repo first, then force-pushing it onto
+    `mini-openfx-assignment`'s `main` (replacing the single squashed
+    commit), then reapplying the CI fix on top. Verified via
+    `git ls-remote` before deleting the safety-net branch.
+  - **Then, per explicit instruction:** all ~41 commit messages were
+    rewritten (`git filter-branch --msg-filter`) to strip the
+    `Co-Authored-By: Claude` trailer GitHub was using to show a second
+    author on every commit — author identity was already correct
+    (`git config user.name`/`user.email`), it was purely a message-body
+    line. Force-pushed again. See working-agreement rule 8 above: this
+    repo no longer gets that trailer (or a "Generated with Claude Code"
+    PR footer) on anything going forward.
+  - **Also discovered while investigating:** Render's `miniopenfx-api`
+    and `miniopenfx-frontend` services were still deployed from the
+    *other*, now-redundant `mini-openfx` GitHub repo — not this one.
+    Fixed by manually re-pointing both services' source repo to
+    `mini-openfx-assignment` in the Render dashboard (Settings →
+    "Update Source"), re-entering `miniopenfx-frontend`'s Build Command
+    (`cd frontend && npm ci && npm run build` — this field resets on a
+    source change and isn't carried over automatically; `render.yaml`
+    itself needed no edits, since it doesn't hardcode a repo). Verified
+    live in an actual browser afterward: Prices, Balances (5 real
+    seeded/traded currencies), and Trade History (7 real trades) all
+    loaded correctly from the new source, console clean.
+  - **Three GitHub repos exist on this account** under similar names —
+    worth knowing so a future session doesn't reflexively assume "the
+    repo" is unambiguous: `mini-openfx-assignment` (this one, live,
+    correct history, connected to Render) is canonical; `mini-openfx`
+    is now redundant (Render disconnected from it, being deleted by the
+    person manually); `open-fx-assignment` (private) also exists with a
+    single, unrelated commit — untouched, origin unknown, not
+    investigated.
+  - **Not yet done:** the local nested `~/Mini-OpenFX/mini-openfx/`
+    folder is still on disk — redundant now, left for the person to
+    remove in their own time rather than deleted unprompted.
 
 A living project overview (architecture, data model, the 15s-expiry
 mechanism, trade-offs) is maintained in Notion — ask the person for the
