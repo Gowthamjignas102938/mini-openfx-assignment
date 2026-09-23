@@ -230,6 +230,180 @@
           }
         }
       ]
+    },
+    {
+      "name": "Demo Error Cases",
+      "description": "Deliberately broken requests for showing off the reliability/validation work live. Each one is deterministic and needs no setup, except where noted.",
+      "item": [
+        {
+          "name": "401 - Missing API Key",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/balances",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "balances"
+              ]
+            },
+            "description": "Same request as List Balances, but with the collection's auth stripped off. The global ApiKeyGuard rejects it with 401 before it reaches the controller."
+          }
+        },
+        {
+          "name": "404 - Unknown Currency (Balances)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/balances/GBP",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "balances",
+                "GBP"
+              ]
+            },
+            "description": "GBP isn't a seeded currency, so this 404s with a specific message instead of returning null/empty."
+          }
+        },
+        {
+          "name": "400 - Validation Error (negative amount)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromCurrency\": \"USD\",\n  \"toCurrency\": \"BTC\",\n  \"fromAmount\": -100,\n  \"symbol\": \"BTCUSDT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/trades",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "trades"
+              ]
+            },
+            "description": "The global ValidationPipe + CreateTradeDto reject this before TradesService ever runs, since fromAmount fails @IsPositive()."
+          }
+        },
+        {
+          "name": "400 - Same Currency Rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromCurrency\": \"USD\",\n  \"toCurrency\": \"USD\",\n  \"fromAmount\": 100,\n  \"symbol\": \"BTCUSDT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/trades",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "trades"
+              ]
+            },
+            "description": "The IsDifferentCurrency validator on CreateTradeDto rejects a same-currency trade before it reaches the service — this is the fix for the bug that used to mint money on a same-currency trade."
+          }
+        },
+        {
+          "name": "409 - No Valid Cached Price",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromCurrency\": \"BTC\",\n  \"toCurrency\": \"EUR\",\n  \"fromAmount\": 0.01,\n  \"symbol\": \"BTCEUR\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/trades",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "trades"
+              ]
+            },
+            "description": "Uses BTCEUR without fetching its price first, so there's nothing in the Redis cache under price:BTCEUR yet. TradesService only ever reads the cache for a trade, so a miss here is the same 409 a genuinely expired (15s+ old) price would produce — pick any symbol not fetched recently to reproduce this live."
+          }
+        },
+        {
+          "name": "400 - Insufficient Funds",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromCurrency\": \"BTC\",\n  \"toCurrency\": \"USD\",\n  \"fromAmount\": 1,\n  \"symbol\": \"BTCUSDT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/trades",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "trades"
+              ]
+            },
+            "description": "Run Prices > Get Price by Symbol for BTCUSDT right before this (within 15s), otherwise it 409s instead. BTC starts seeded at 0, so trading 1 BTC away always fails with a specific insufficient-balance message, not a generic error."
+          }
+        }
+      ]
     }
   ],
   "variable": [
