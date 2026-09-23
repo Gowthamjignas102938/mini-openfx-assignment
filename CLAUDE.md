@@ -447,6 +447,32 @@ history on GitHub and re-pointing the live Render deployment at it.
     folder is still on disk — redundant now, left for the person to
     remove in their own time rather than deleted unprompted.
 
+- **Frontend Playwright e2e suite added, then a broken CI fixed (2026-09-23).**
+  A prior session added `frontend/e2e/*.spec.ts` (13 Playwright specs, all
+  network-mocked via `page.route` — no real backend/DB needed) but this
+  status section was never updated for it, and the commit broke CI: the
+  backend's `jest.config.cjs` had an unscoped `testMatch: ['**/*.spec.ts']`,
+  which had only ever been safe because every `.spec.ts` file in the repo
+  happened to live under `src/` — it started trying to load the new
+  Playwright specs too and failed (`@playwright/test` only exists in
+  `frontend/node_modules`). Root cause confirmed against the actual failed
+  GitHub Actions run (35726107873), not just by reading code. Fixed in two
+  separate commits: (1) scoped `testMatch` to `src/`; (2) added CI steps to
+  actually install frontend deps + Chromium and run
+  `cd frontend && npm run test:e2e` — previously this suite had never run
+  in CI at all, only accidentally (and incorrectly) via the backend's Jest.
+  Verified genuinely green on GitHub Actions afterward (run 35825210043),
+  including the new frontend step, not just locally.
+- **Also noticed, not touched:** the untracked, redundant nested
+  `~/Mini-OpenFX/mini-openfx/` folder (flagged 2026-09-21 as safe to delete,
+  left for the person) is now also causing local-only noise — a
+  `jest-haste-map` naming collision warning on `npm test`, and `npm run
+  typecheck` errors under `mini-openfx/frontend/...` (the root
+  `tsconfig.json`'s `exclude` lists `frontend` but not `mini-openfx`, so its
+  nested copy of `frontend/` isn't excluded). Neither affects CI, since the
+  folder isn't tracked/pushed — a fresh clone doesn't have it. Still left
+  for the person to remove in their own time, per the 2026-09-21 decision.
+
 A living project overview (architecture, data model, the 15s-expiry
 mechanism, trade-offs) is maintained in Notion — ask the person for the
 link if it's not already in context, rather than assuming it's stale.
