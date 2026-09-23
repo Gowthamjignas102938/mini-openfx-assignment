@@ -69,3 +69,15 @@ jobs:
 
       - name: E2E tests
         run: npm run test:e2e
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      - name: Frontend E2E tests
+        run: npm run test:e2e
+        working-directory: frontend
