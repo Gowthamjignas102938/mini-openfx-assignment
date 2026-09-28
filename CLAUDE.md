@@ -99,8 +99,8 @@ first.
 
 ## Current status
 
-Last updated by Claude, 2026-09-21, after recovering the repo's real commit
-history on GitHub and re-pointing the live Render deployment at it.
+Last updated by Claude, 2026-09-28, after adding the local Minikube
+deployment (`k8s/`) and hardening both Dockerfiles.
 
 - **Module 00 (orientation/product thinking): done.** Scope decisions above
   are final.
@@ -472,6 +472,35 @@ history on GitHub and re-pointing the live Render deployment at it.
   nested copy of `frontend/` isn't excluded). Neither affects CI, since the
   folder isn't tracked/pushed — a fresh clone doesn't have it. Still left
   for the person to remove in their own time, per the 2026-09-21 decision.
+
+- **Local Kubernetes (Minikube) deployment (2026-09-28): done.** Added for
+  a colleague demo, on the person's explicit request. Separate from and
+  alongside the Render deployment, not a replacement for it. `k8s/` holds a
+  namespace, ConfigMap, in-cluster Postgres (1Gi PVC) + Redis, a one-off
+  migrate+seed `Job` (so 2+ API replicas don't race creating tables), the
+  API Deployment (2 replicas, probes on `GET /`) and the frontend
+  Deployment (nginx, 2 replicas), each with a NodePort Service. The
+  frontend image is built with `VITE_API_BASE_URL=/v1` and an empty key;
+  nginx proxies `/v1/` to the API Service and adds `X-API-Key` from the
+  Secret, so no key is baked into the JS bundle. The real Secret comes
+  from the git-ignored `k8s/.env.k8s` via `kubectl create secret`; only
+  `k8s/examples/secret.example.yaml` (placeholders) is committed.
+  `k8s/README.md` has the deploy/teardown commands, a demo script, and
+  troubleshooting.
+  - **Root `Dockerfile` changed, and Render builds from it:** it now runs as
+    non-root `node` and copies `dist/`/`drizzle/` with `--chown=node:node`.
+    The `--chown` is required, not cosmetic: this repo's files are `0640`,
+    so root-owned copies were unreadable by `node` and migrations failed
+    ("Can't find meta/_journal.json"). The same boot `CMD` was verified
+    working in Minikube. Not yet re-verified on Render after this push.
+  - The same `0640` issue hit the frontend's nginx template. A
+    `COPY --chmod=644` also removed the execute bit from the templates
+    *directory*, so nginx silently used its default config; fixed with
+    `--chown=nginx:nginx`. Any future Dockerfile `COPY` in this repo needs
+    to account for these permissions.
+  - Verified live: health, 401 without the key, balances, a live Binance
+    price, a real trade, scale 2→4→2, Pod-deletion self-healing, and all
+    frontend tabs in a real browser with a clean console.
 
 A living project overview (architecture, data model, the 15s-expiry
 mechanism, trade-offs) is maintained in Notion — ask the person for the
