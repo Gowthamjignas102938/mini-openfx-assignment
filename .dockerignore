@@ -1,6 +1,9 @@
+# Files Docker should NOT send into the build (faster builds, no secrets in the image)
 node_modules
 dist
 frontend
+mini-openfx
+k8s
 .git
 .github
 .env
@@ -9,3 +12,4 @@ frontend
 coverage
 test
 drizzle.config.ts
+*.tsbuildinfo

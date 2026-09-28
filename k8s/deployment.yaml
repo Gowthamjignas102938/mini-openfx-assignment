@@ -1,0 +1,52 @@
+# The Deployment for the OpenFX API itself. It tells Kubernetes:
+# "always keep N copies (Pods) of this container running, and replace any that die."
+apiVersion: apps/v1                # Deployments live in the "apps" API group
+kind: Deployment
+metadata:
+  name: openfx-api                 # name used by kubectl scale / logs / rollout
+  namespace: openfx
+  labels:
+    app: openfx-api
+spec:
+  replicas: 2                      # run 2 identical Pods: if one dies, the other keeps serving
+  selector:
+    matchLabels:
+      app: openfx-api              # the Deployment owns the Pods carrying this label
+  template:                        # blueprint used to create each Pod
+    metadata:
+      labels:
+        app: openfx-api            # stamped on every Pod; the Service uses it to find them
+    spec:
+      containers:
+        - name: api
+          image: openfx:v1                   # fixed tag, so we know exactly which build runs
+          imagePullPolicy: IfNotPresent      # use the locally loaded image; only pull if it's missing
+          # Only start the API. Migrations + seed are done by migrate-job.yaml.
+          command: ["node", "dist/main.js"]
+          ports:
+            - containerPort: 3000            # the port NestJS listens on (PORT in the ConfigMap)
+          envFrom:                           # turn every key below into an environment variable
+            - configMapRef:
+                name: openfx-config          # PORT, NODE_ENV, REDIS_URL
+            - secretRef:
+                name: openfx-secrets         # API_KEY, DATABASE_URL (and POSTGRES_PASSWORD, unused here)
+          resources:
+            requests:                        # what the scheduler reserves for this Pod
+              cpu: 100m                      # 0.1 of a CPU core
+              memory: 128Mi
+            limits:                          # hard cap: over the memory limit, the container is killed (OOMKilled)
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:                    # "can this Pod take traffic yet?" If not, the Service skips it
+            httpGet:
+              path: /                        # GET / returns "Hello World!" and needs no API key
+              port: 3000
+            initialDelaySeconds: 5           # give the app a few seconds to boot first
+            periodSeconds: 5                 # check every 5s
+          livenessProbe:                     # "is this Pod still alive?" If it keeps failing, k8s restarts it
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3              # restart after 3 failures in a row (~30s)

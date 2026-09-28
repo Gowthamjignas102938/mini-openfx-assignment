@@ -3,3 +3,7 @@ node_modules
 dist
 *.tsbuildinfo
 .claude
+
+# Real Kubernetes secret values (local only)
+k8s/.env.k8s
+k8s/secret.yaml

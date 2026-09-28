@@ -1,0 +1,6 @@
+# A Namespace is a named "folder" inside the cluster. Everything for this app
+# lives in "openfx", so it's easy to list (-n openfx) and delete in one go.
+apiVersion: v1          # which version of the Kubernetes API defines this object
+kind: Namespace         # the type of object we're creating
+metadata:
+  name: openfx          # the namespace's name; every other file refers to it

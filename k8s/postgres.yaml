@@ -1,0 +1,81 @@
+# Demo-only Postgres running inside the cluster: one Pod, one small disk.
+# A real production setup would use a managed database instead.
+
+# --- 1. Disk: a PersistentVolumeClaim asks the cluster for storage that
+# outlives the Pod, so deleting/restarting Postgres doesn't wipe the data.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: openfx
+spec:
+  accessModes: ["ReadWriteOnce"]   # can be mounted read-write by one node at a time
+  resources:
+    requests:
+      storage: 1Gi                 # size of disk to request (Minikube creates it automatically)
+---
+# --- 2. Deployment: keeps exactly one Postgres Pod running.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: openfx
+spec:
+  replicas: 1                      # databases don't scale by just adding copies, so keep 1
+  strategy:
+    type: Recreate                 # stop the old Pod before starting a new one (two can't share the disk)
+  selector:
+    matchLabels:
+      app: postgres                # this Deployment manages Pods with this label
+  template:                        # the blueprint for each Pod
+    metadata:
+      labels:
+        app: postgres              # label stamped on the Pod (must match the selector)
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine          # official Postgres image (same as docker-compose.yml)
+          ports:
+            - containerPort: 5432            # Postgres' standard port
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_DB
+              value: miniopenfx              # database created on first start
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:                # read the password from our Secret, not plain text
+                  name: openfx-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA                   # keep data in a subfolder (the disk's root has a lost+found dir Postgres dislikes)
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data   # where the disk appears inside the container
+          readinessProbe:                    # "is it ready for connections?" Traffic is only sent once this passes
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }  # guaranteed minimum (100m = 0.1 CPU core)
+            limits: { cpu: 500m, memory: 512Mi }    # hard maximum
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data         # plug in the disk requested above
+---
+# --- 3. Service: a stable internal name ("postgres") and IP for the Pod.
+# Pods come and go with new IPs; the Service address stays the same.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres                   # other Pods connect to host "postgres"
+  namespace: openfx
+spec:
+  type: ClusterIP                  # reachable only from inside the cluster (good for a DB)
+  selector:
+    app: postgres                  # send traffic to Pods with this label
+  ports:
+    - port: 5432                   # port on the Service
+      targetPort: 5432             # port on the Pod

@@ -1,0 +1,29 @@
+# A Job runs a Pod to COMPLETION once, unlike a Deployment, which keeps Pods
+# running forever. We use it to create the DB tables and seed the starting
+# balances exactly once, instead of having every API replica try to do it
+# at the same time.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openfx-migrate
+  namespace: openfx
+spec:
+  backoffLimit: 4                  # if it fails, retry up to 4 times before giving up
+  template:
+    spec:
+      restartPolicy: OnFailure     # restart the container only if it exits with an error
+      initContainers:              # run to completion BEFORE the main container starts
+        - name: wait-for-postgres
+          image: postgres:16-alpine          # reuse the Postgres image just for its pg_isready tool
+          command: ["sh", "-c", "until pg_isready -h postgres -U postgres; do echo waiting for postgres; sleep 2; done"]
+      containers:
+        - name: migrate
+          image: openfx:v1                   # our app image (it contains the migrate + seed scripts)
+          imagePullPolicy: IfNotPresent      # use the image we loaded into Minikube, don't download it
+          command: ["sh", "-c", "node dist/db/migrate.js && node dist/db/seed.js"]
+          envFrom:
+            - configMapRef: { name: openfx-config }
+            - secretRef: { name: openfx-secrets }   # provides DATABASE_URL
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }

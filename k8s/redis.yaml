@@ -1,0 +1,44 @@
+# Demo-only Redis inside the cluster. It only caches prices for 15 seconds,
+# so it needs no disk: losing its data on restart is harmless.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: openfx
+spec:
+  replicas: 1                      # one cache instance is plenty for the demo
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine    # official small Redis image (same as docker-compose.yml)
+          ports:
+            - containerPort: 6379  # Redis' standard port
+          readinessProbe:          # only mark Ready once Redis answers PING
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 250m, memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis                      # the app connects to redis://redis:6379 (see configmap.yaml)
+  namespace: openfx
+spec:
+  type: ClusterIP                  # internal only
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379

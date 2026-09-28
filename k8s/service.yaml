@@ -1,0 +1,15 @@
+# A Service gives the API Pods ONE stable address and load-balances requests
+# across however many replicas are running.
+apiVersion: v1
+kind: Service
+metadata:
+  name: openfx-api                 # use this name with: minikube service openfx-api -n openfx
+  namespace: openfx
+spec:
+  type: NodePort                   # also open a port on the node itself, so you can reach it from your Mac
+  selector:
+    app: openfx-api                # send traffic to any Ready Pod with this label
+  ports:
+    - port: 80                     # port inside the cluster (http://openfx-api)
+      targetPort: 3000             # container port the traffic is forwarded to
+      nodePort: 30080              # fixed outside port on the node (must be in the 30000-32767 range)

@@ -1,0 +1,16 @@
+# A ConfigMap holds NON-secret settings as key/value pairs. Pods read them
+# as environment variables, so config lives outside the image and can change
+# without rebuilding it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openfx-config   # the name the Deployment uses to find these values
+  namespace: openfx     # lives in our app's namespace
+data:
+  # Port the NestJS app listens on inside the container
+  PORT: "3000"
+  # Run Node in production mode
+  NODE_ENV: "production"
+  # "redis" is the name of the Redis Service (see redis.yaml). Kubernetes'
+  # built-in DNS turns a Service name into its internal IP address.
+  REDIS_URL: "redis://redis:6379"
