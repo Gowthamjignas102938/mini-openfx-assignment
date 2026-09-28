@@ -1,0 +1,57 @@
+# The website (React app served by nginx). nginx also forwards /v1/... calls
+# to the openfx-api Service, adding the API key from the Secret.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openfx-frontend
+  namespace: openfx
+  labels:
+    app: openfx-frontend
+spec:
+  replicas: 2                              # 2 copies, same as the API
+  selector:
+    matchLabels:
+      app: openfx-frontend                 # manage Pods with this label
+  template:
+    metadata:
+      labels:
+        app: openfx-frontend               # stamped on each Pod; the Service finds them by it
+    spec:
+      containers:
+        - name: web
+          image: openfx-frontend:v1        # built from frontend/Dockerfile, loaded into Minikube
+          imagePullPolicy: IfNotPresent    # use the local image, don't try to download it
+          ports:
+            - containerPort: 8080          # nginx's port (see frontend/nginx/default.conf.template)
+          env:
+            - name: API_KEY                # nginx puts this into the X-API-Key header it forwards
+              valueFrom:
+                secretKeyRef:
+                  name: openfx-secrets
+                  key: API_KEY
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }    # nginx serving static files needs very little
+            limits: { cpu: 200m, memory: 128Mi }
+          readinessProbe:                  # only send traffic once nginx answers
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:                   # restart nginx if it stops answering
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openfx-frontend                    # open with: minikube service openfx-frontend -n openfx
+  namespace: openfx
+spec:
+  type: NodePort                           # reachable from outside the cluster
+  selector:
+    app: openfx-frontend
+  ports:
+    - port: 80                             # port inside the cluster
+      targetPort: 8080                     # nginx's container port
+      nodePort: 30081                      # fixed outside port (the API uses 30080)

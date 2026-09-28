@@ -1,0 +1,8 @@
+# Files Docker should NOT send into the frontend build
+node_modules
+dist
+.env
+test-results
+playwright-report
+e2e
+*.log
