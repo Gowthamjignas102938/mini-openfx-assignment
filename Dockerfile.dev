@@ -1,0 +1,33 @@
+# Development-only image for the API, used by Tilt (see Tiltfile).
+# The real Dockerfile is left untouched because Render builds from it.
+#
+# Differences from the production Dockerfile:
+#   - keeps devDependencies (TypeScript + the Nest CLI), so the container can
+#     recompile itself when Tilt syncs a changed file in
+#   - one stage instead of two (image size doesn't matter for local dev)
+#   - runs as root, so files synced in from the Mac are always readable
+#     (this repo's files are 0640, see the notes in the main Dockerfile)
+
+# Same Node 22 Alpine base as production, so behaviour matches
+FROM node:22-alpine
+# All following commands run inside /app
+WORKDIR /app
+
+# Dependency manifests first, so this slow layer is cached until they change
+COPY package.json package-lock.json ./
+# Install ALL dependencies, including the dev tools needed for watch mode
+RUN npm ci
+
+# Build config the Nest CLI and TypeScript need
+COPY tsconfig.json tsconfig.build.json nest-cli.json ./
+# The source code (Tilt will keep this folder in sync after startup).
+# No build step here: watch mode compiles src/ into dist/ when it starts.
+# Migrations aren't copied either; the migrate Job uses the production image.
+COPY src ./src
+
+# Nest's port
+EXPOSE 3000
+# Default: watch mode. It recompiles and restarts the app whenever src/ changes.
+# (The Tiltfile also sets this on the Deployment, because deployment.yaml's
+# own `command:` would otherwise win.)
+CMD ["node_modules/.bin/nest", "start", "--watch"]

@@ -1,0 +1,28 @@
+// Files Okteto should NOT sync between the Mac and the dev container.
+// Okteto uses Syncthing, and this is Syncthing's ignore file. Syntax:
+// one pattern per line, "//" starts a comment.
+
+// Installed inside the container with `npm ci`. The Mac's copy has
+// macOS-only native binaries (oxlint, etc.) that wouldn't run on Linux,
+// and it's large enough to make the first sync very slow.
+node_modules
+
+// Compiled output. Nest's watch mode builds it inside the container.
+dist
+*.tsbuildinfo
+
+// IMPORTANT: `npm run start:dev` loads .env if it exists. The Mac's .env
+// points DATABASE_URL at localhost, which would override the in-cluster
+// Postgres. Keep it out.
+.env
+
+// Real Kubernetes secrets stay on the Mac.
+k8s/.env.k8s
+
+// Not needed to run the API, and big (the frontend has its own node_modules).
+frontend
+mini-openfx
+.git
+coverage
+test-results
+playwright-report

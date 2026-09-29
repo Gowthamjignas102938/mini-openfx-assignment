@@ -1,0 +1,81 @@
+# Okteto manifest for MiniOpenFX, for the open-source Okteto CLI on local
+# Minikube. Only `okteto up` / `okteto down` are used: no Okteto account,
+# no Okteto cloud, no `okteto deploy`.
+#
+# How it works, in short: the app is already running from `kubectl apply -f k8s/`.
+# `okteto up` finds the openfx-api Deployment, scales it to 0, and starts a
+# copy of it (openfx-api-okteto) whose container is swapped for the dev
+# image below. It keeps the same labels, env vars, ConfigMap and Secret, so
+# the openfx-api Service and the website still reach it. Your repo folder is
+# kept in two-way sync with /app in that container, and you get a shell
+# inside it where you start the app yourself in watch mode.
+# `okteto down` deletes the copy and scales the original back up.
+#
+# The files in k8s/ are NOT changed.
+#
+# Never run this while `tilt up` is running: both would fight over the same
+# openfx-api Deployment. Run `tilt down` first.
+
+# Everything under "dev" describes development containers, one per Deployment.
+dev:
+  # The key must be the name of the Deployment to take over (k8s/deployment.yaml).
+  openfx-api:
+    # Dev image: plain Node 22 Alpine, the same base as the production
+    # Dockerfile, so Node behaves the same. It has node, npm and npx, which
+    # is all this stack needs. TypeScript and the Nest CLI come from the
+    # project's own devDependencies (npm ci inside the container).
+    image: node:22-alpine
+
+    # What runs when you `okteto up`: a shell inside the dev container
+    # (Alpine has sh, not bash). You start the app from there yourself.
+    command: sh
+
+    # The shell opens in /app, where the code is synced to.
+    workdir: /app
+
+    # File sync: <folder on the Mac>:<folder in the container>.
+    # "." is the folder this file is in, the repo root. Okteto uses Syncthing
+    # and syncs both ways: files created in the container also show up on
+    # the Mac, except for what .stignore excludes (node_modules, dist, the
+    # frontend, secrets...).
+    sync:
+      - .:/app
+
+    # Port forwarding while `okteto up` runs: <port on the Mac>:<port in the container>.
+    # localhost:8080 -> Nest on 3000 (same local port as the Tilt setup,
+    # which is fine because the two never run at the same time).
+    forward:
+      - 8080:3000
+
+    # The dev container keeps the env vars from the Deployment (ConfigMap:
+    # PORT, NODE_ENV=production, REDIS_URL; Secret: API_KEY, DATABASE_URL).
+    # These are added on top. NODE_ENV=development only affects Node
+    # libraries' behaviour; the app reads nothing else from it.
+    environment:
+      NODE_ENV: development
+
+    # The original limits (256Mi / 500m) are too small for the TypeScript
+    # compiler in watch mode plus npm ci. This only applies to the dev
+    # container, not to deployment.yaml.
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+    # Okteto gives the dev container its own disk (a PVC) that holds /app.
+    # So node_modules from `npm ci` survive `okteto down` / `okteto up`,
+    # and the first sync doesn't have to start from zero next time.
+    persistentVolume:
+      enabled: true
+      size: 2Gi
+
+    # Health checks are turned off in the dev container (Okteto's default,
+    # written out here to make it clear). Otherwise Kubernetes would keep
+    # restarting the container while you haven't started the app yet.
+    probes:
+      liveness: false
+      readiness: false
+      startup: false
