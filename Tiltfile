@@ -170,8 +170,11 @@ docker_build(
     '.',
     dockerfile='Dockerfile',
     # Only DB code and dependencies: an ordinary API edit must NOT rebuild this
-    # image and re-run the Job
-    only=['src/db', 'drizzle', 'package.json', 'package-lock.json'],
+    # image and re-run the Job. NOTE: `only` also limits the files sent to
+    # `docker build`, so it must still list everything the Dockerfile COPYs
+    # (the tsconfigs and nest-cli.json), or the build fails.
+    only=['src/db', 'drizzle', 'package.json', 'package-lock.json',
+          'tsconfig.json', 'tsconfig.build.json', 'nest-cli.json'],
 )
 
 
