@@ -102,14 +102,22 @@ Okteto sends usage analytics by default (there's a `~/.okteto/analytics.json`). 
 ### Speed
 
 - API code change to new response on `localhost:8080`: 3.3 seconds, the same across three tries. The extra time compared to Tilt is Syncthing, which waits about a second to batch file changes before sending them.
-- Only the API is in dev mode. A website change still means rebuilding its image by hand, the old way.
+- Website change: about 2 seconds, and the page updated without even reloading (the tab I was on stayed selected).
+
+### Adding the website (later the same day)
+
+At first I only set up the API. Later I added a second dev container for the website, `openfx-frontend`. It runs Vite's dev server instead of nginx, and it has its own `frontend/.stignore` so my local `frontend/.env` doesn't sync in. You start it in a second terminal with `okteto up openfx-frontend`, so for the full app you need two Okteto windows open. Tilt does all of it from one.
+
+The tricky part was the API calls. In the cluster, nginx forwards `/v1` to the API and adds the key. Vite doesn't do that, and the browser on my Mac can't reach cluster names like `openfx-api`. So the website's dev container also forwards `localhost:8090` to the `openfx-api` Service, and the browser calls the API there. The key comes from the Secret when starting Vite (`VITE_API_KEY=$API_KEY npm run dev`). That puts the key in the browser's JavaScript, which is fine on my laptop but is not how the real deployment does it.
+
+I changed the header from MiniOpenFX to FXFlow in `frontend/src/App.tsx` and it showed up in the browser in about 2 seconds.
 
 ## Comparison
 
 | | Tilt | Okteto |
 |---|---|---|
 | Setup time (for me) | about 20 min, four fixes | about 5 min, but I'd learned from Tilt first |
-| Code change to visible | 1.5 s (API), 10.8 s (website rebuild) | 3.3 s (API only) |
+| Code change to visible | 1.5 s (API), 10.8 s (website rebuild) | 3.3 s (API), about 2 s (website, no reload) |
 | How errors show up | Tiltfile errors with a line number. Build and app logs per resource in the web UI. Pod problems mixed into the logs | App errors in my own shell. Startup problems hidden behind a spinner, I needed `kubectl get events` |
 | Works on our office-only cluster | Not tested. Probably, but it builds images, so it would need a registry the cluster can pull from | Not tested. Probably, it only needs kubectl access. The cluster must be able to pull `node:22-alpine` and Okteto's image (or a mirror) |
 | Works outside office Wi-Fi | On Minikube, yes. For the office cluster, only with VPN | Same: fine on Minikube, VPN for the office cluster |
@@ -119,6 +127,6 @@ Okteto sends usage analytics by default (there's a `~/.okteto/analytics.json`). 
 
 For our team I'd pick Tilt, as long as the Tiltfile stays in the repo and someone owns it. Once it worked, one `tilt up` started the whole app, website included, and API changes showed up in 1.5 seconds. It also cleans up after itself. Most of my 20 minutes of setup went on a one-time problem (containerd on my Minikube), and that's solved in the file now, so the next person won't hit it.
 
-Okteto was quicker to get going and felt the most like normal local development. I'd suggest it for someone who only works on the API and wants a shell inside the cluster. But it only covers one Deployment, the app has to be deployed some other way first, and forgetting about `.stignore` can quietly point the app at the wrong database.
+Okteto was quicker to get going and felt the most like normal local development. Website changes were actually faster with Okteto than with Tilt, because Vite updates the page in place. But you need one terminal per part of the app, the app has to be deployed some other way first, and forgetting about `.stignore` can quietly point the app at the wrong database.
 
 Whichever we use, never run both at the same time. They both take over the same `openfx-api` Deployment and would undo each other's changes.

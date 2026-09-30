@@ -2,8 +2,13 @@
 # Minikube. Only `okteto up` / `okteto down` are used: no Okteto account,
 # no Okteto cloud, no `okteto deploy`.
 #
+# Two dev containers are defined below: openfx-api (the NestJS API) and
+# openfx-frontend (the React website). Start each in its own terminal:
+#   okteto up openfx-api
+#   okteto up openfx-frontend
+#
 # How it works, in short: the app is already running from `kubectl apply -f k8s/`.
-# `okteto up` finds the openfx-api Deployment, scales it to 0, and starts a
+# `okteto up openfx-api` finds that Deployment, scales it to 0, and starts a
 # copy of it (openfx-api-okteto) whose container is swapped for the dev
 # image below. It keeps the same labels, env vars, ConfigMap and Secret, so
 # the openfx-api Service and the website still reach it. Your repo folder is
@@ -75,6 +80,46 @@ dev:
     # Health checks are turned off in the dev container (Okteto's default,
     # written out here to make it clear). Otherwise Kubernetes would keep
     # restarting the container while you haven't started the app yet.
+    probes:
+      liveness: false
+      readiness: false
+      startup: false
+
+  # Second dev container: the website. Start it in its own terminal with
+  # `okteto up openfx-frontend` (the API one is `okteto up openfx-api`).
+  # Both can run at the same time: they take over different Deployments.
+  # In the cluster, this Deployment is nginx serving the built site. In dev
+  # mode it runs Vite's dev server instead, which reloads the page on save.
+  openfx-frontend:
+    # Same Node 22 Alpine base as frontend/Dockerfile's build stage
+    image: node:22-alpine
+    # A shell; you start Vite yourself from it (npm ci, then npm run dev)
+    command: sh
+    workdir: /app
+    # Only the frontend folder is synced. frontend/.stignore keeps
+    # node_modules, dist and the local .env out.
+    sync:
+      - frontend:/app
+    forward:
+      # localhost:8081 -> Vite's dev server on 5173 in the container
+      - 8081:5173
+      # localhost:8090 -> the openfx-api Service in the cluster. The browser
+      # calls the API here. The Service sends traffic to whichever API Pod
+      # is running: the normal one, or the Okteto dev one.
+      - 8090:openfx-api:80
+    environment:
+      # Where the browser sends API calls (read by src/api/client.ts).
+      # The API key is added when starting Vite: VITE_API_KEY=$API_KEY,
+      # from the API_KEY env var this Deployment already gets from the Secret.
+      VITE_API_BASE_URL: http://localhost:8090/v1
+    resources:
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    persistentVolume:
+      enabled: true
+      size: 2Gi
+    # nginx's /healthz check doesn't exist on Vite, so turn the checks off
     probes:
       liveness: false
       readiness: false

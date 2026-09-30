@@ -1,0 +1,16 @@
+// Files Okteto should NOT sync into the website's dev container
+// (Syncthing ignore file, "//" starts a comment).
+
+// Installed inside the container with `npm ci` (the Mac's copy has
+// macOS-only binaries)
+node_modules
+
+// Build output and test output
+dist
+test-results
+playwright-report
+*.tsbuildinfo
+
+// The local .env points the API at localhost:3000 with a local key.
+// In the dev container these come from okteto.yml and the Secret instead.
+.env
