@@ -1,4 +1,4 @@
-# Tiltfile for MiniOpenFX on local Minikube.
+# Tiltfile for MiniOpenFX on a local k3d cluster (with a local image registry).
 #
 # Run from the repo root:   tilt up      (press space to open the web UI)
 # Stop and clean up:        tilt down
@@ -7,8 +7,9 @@
 # bottom on start, and again whenever you save it.
 #
 # What it does:
-#   1. builds three images: the API (openfx, dev image), the migrate Job
-#      (openfx-migrate, production image) and the website (openfx-frontend)
+#   1. builds three images and pushes them to the k3d registry (localhost:5001):
+#      the API (openfx, dev image), the migrate Job (openfx-migrate,
+#      production image) and the website (openfx-frontend)
 #   2. applies every manifest in k8s/ (never the secret template)
 #   3. port-forwards the API to localhost:8080 and the website to localhost:8081
 #   4. live-updates the API: a changed .ts file is copied into the running
@@ -26,11 +27,13 @@
 # 0. Safety checks
 # ---------------------------------------------------------------------------
 
-# Only ever run against the local Minikube cluster, never a shared one by mistake.
+# Only ever run against the local k3d cluster, never a shared one by mistake.
 # (Tilt already refuses most remote clusters, but this makes it explicit.)
-if k8s_context() != 'minikube':
+# Create it once with:
+#   k3d cluster create openfx-dev --agents 0 --registry-create openfx-registry:0.0.0.0:5001
+if k8s_context() != 'k3d-openfx-dev':
     # fail() stops the Tiltfile and shows this message in the terminal and UI
-    fail('Current kubectl context is "%s". Run: kubectl config use-context minikube' % k8s_context())
+    fail('Current kubectl context is "%s". Run: kubectl config use-context k3d-openfx-dev' % k8s_context())
 
 # The Secret is created by hand from the git-ignored k8s/.env.k8s (see
 # k8s/README.md), so Tilt never manages it. Check it exists, because
@@ -110,38 +113,39 @@ watch_file('k8s')
 # 2. Build the API image, with live update
 # ---------------------------------------------------------------------------
 
-# Why custom_build and not the usual docker_build: this Minikube uses the
-# containerd runtime, so Tilt can't build straight into Minikube's image
-# store. Instead we build with the Mac's Docker, then copy the image into
-# Minikube ourselves. Tilt fills in $EXPECTED_REF with a fresh, unique tag
-# (like openfx:tilt-build-1790664528) on every build, which is why the
-# imagePullPolicy: IfNotPresent in deployment.yaml is fine.
-custom_build(
+# k3d gave us a local registry (see the safety check above) and advertised it
+# to Tilt, so plain docker_build just works: Tilt builds, pushes the image to
+# localhost:5001, and the cluster pulls it from there. Only layers that changed
+# are pushed, which is much faster than copying a whole image into Minikube.
+docker_build(
     # The name matches `image: openfx:v1` in deployment.yaml (Tilt matches
     # the name and ignores the tag). The migrate Job was renamed away from
     # it above, so this image is only used by the API.
     'openfx',
-    'docker build -f Dockerfile.dev -t $EXPECTED_REF . && minikube image load $EXPECTED_REF',
-    # Files that trigger a build. Changes to anything else are ignored.
-    deps=['src', 'package.json', 'package-lock.json',
-          'tsconfig.json', 'tsconfig.build.json', 'nest-cli.json', 'Dockerfile.dev'],
-    # Nothing to push to a registry: the image is already inside Minikube after `image load`
-    disable_push=True,
-    # Normally Tilt re-tags the finished image in the Mac's Docker and deploys
-    # that new tag. But Minikube only has the tag we loaded ($EXPECTED_REF),
-    # so without this the Pods ask for a tag Minikube has never seen and end
-    # up in ImagePullBackOff. This says: deploy exactly $EXPECTED_REF.
-    skips_local_docker=True,
+    '.',
+    dockerfile='Dockerfile.dev',
+    # Only these files can trigger a build or a live update. A change to
+    # anything else in the repo (README, k8s/, frontend/...) is ignored.
+    only=['src', 'package.json', 'package-lock.json',
+          'tsconfig.json', 'tsconfig.build.json', 'nest-cli.json'],
     # Instead of rebuilding the image on every save, run these steps against
-    # the running container. Order matters: fall_back_on must come first.
+    # the running container. Order matters: fall_back_on, then sync, then run.
     live_update=[
-        # A dependency or build-config change can't be patched into a running
-        # container, so do a full image rebuild for these instead.
-        fall_back_on(['package.json', 'package-lock.json', 'tsconfig.json',
-                      'tsconfig.build.json', 'nest-cli.json', 'Dockerfile.dev']),
-        # Copy changed files from the Mac's src/ into /app/src in the container.
-        # Nest's watch mode notices, recompiles, and restarts the app by itself.
+        # Build config can't be patched into a running container, so do a full
+        # image rebuild for these. (Dockerfile.dev itself always rebuilds.)
+        # package.json and the lockfile are NOT here: they are handled below by
+        # running `npm ci` inside the container, which is faster.
+        fall_back_on(['tsconfig.json', 'tsconfig.build.json', 'nest-cli.json']),
+        # Copy changed files from the Mac into /app in the container.
+        # For src/, Nest's watch mode notices, recompiles, and restarts the app.
         sync('src', '/app/src'),
+        sync('package.json', '/app/package.json'),
+        sync('package-lock.json', '/app/package-lock.json'),
+        # Reinstall dependencies, but ONLY when a dependency file changed.
+        run('cd /app && npm ci', trigger=['package.json', 'package-lock.json']),
+        # Watch mode only restarts on a change in src/, so after a reinstall
+        # touch a source file to make it recompile and pick up the new packages.
+        run('touch /app/src/main.ts', trigger=['package.json', 'package-lock.json']),
     ],
 )
 
@@ -154,12 +158,12 @@ custom_build(
 # from the normal production Dockerfile, so migrations run exactly as they do
 # on Render. It only rebuilds (and re-runs the Job) when DB code, migration
 # files or dependencies change, not on every save.
-custom_build(
+docker_build(
     'openfx-migrate',   # matches the image name set on the Job in section 1
-    'docker build -t $EXPECTED_REF . && minikube image load $EXPECTED_REF',
-    deps=['src/db', 'drizzle', 'package.json', 'package-lock.json', 'Dockerfile'],
-    disable_push=True,
-    skips_local_docker=True,
+    '.',
+    dockerfile='Dockerfile',
+    only=['src', 'drizzle', 'package.json', 'package-lock.json',
+          'tsconfig.json', 'tsconfig.build.json', 'nest-cli.json'],
 )
 
 
@@ -169,17 +173,14 @@ custom_build(
 
 # The website is compiled by Vite into static files that nginx serves, so
 # there's nothing to live-patch. Any change rebuilds and reloads the image.
-custom_build(
+docker_build(
     # Matches `image: openfx-frontend:v1` in frontend.yaml
     'openfx-frontend',
-    'docker build -t $EXPECTED_REF frontend && minikube image load $EXPECTED_REF',
+    'frontend',
     # Only the files that end up in the build (tests and node_modules left out)
-    deps=['frontend/src', 'frontend/public', 'frontend/nginx', 'frontend/index.html',
-          'frontend/package.json', 'frontend/package-lock.json', 'frontend/vite.config.ts',
-          'frontend/tsconfig.json', 'frontend/tsconfig.app.json', 'frontend/tsconfig.node.json',
-          'frontend/Dockerfile'],
-    disable_push=True,
-    skips_local_docker=True,   # same reason as for the API image above
+    only=['src', 'public', 'nginx', 'index.html',
+          'package.json', 'package-lock.json', 'vite.config.ts',
+          'tsconfig.json', 'tsconfig.app.json', 'tsconfig.node.json'],
 )
 
 
