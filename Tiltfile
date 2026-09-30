@@ -12,10 +12,10 @@
 #      production image) and the website (openfx-frontend)
 #   2. applies every manifest in k8s/ (never the secret template)
 #   3. port-forwards the API to localhost:8080 and the website to localhost:8081
-#   4. live-updates the API: a changed .ts file is copied into the running
-#      container and Nest's watch mode recompiles and restarts it. No image
-#      rebuild. The website is a compiled bundle served by nginx, so a change
-#      there rebuilds its image instead.
+#   4. live-updates the API and the website: a changed source file is copied
+#      into the running container, and Nest's watch mode (API) or Vite's dev
+#      server (website) reloads it. No image rebuild. A changed dependency
+#      file runs `npm ci` in the container; a changed build config rebuilds.
 #
 # The files in k8s/ are NOT changed. A few dev-only tweaks (1 replica, watch
 # command, higher limits, a separate image name for the migrate Job, keep the
@@ -86,8 +86,15 @@ for obj in objects:
         api['resources']['limits'] = {'cpu': '1', 'memory': '1Gi'}
 
     if kind == 'Deployment' and name == 'openfx-frontend':
-        # One copy is enough locally, and it makes each rebuild roll out faster
+        # One copy is enough locally, and only one container gets live-updated
         obj['spec']['replicas'] = 1
+        web = obj['spec']['template']['spec']['containers'][0]
+        # frontend.yaml checks nginx's /healthz, which Vite's dev server doesn't
+        # have. Check the home page instead (same port, 8080).
+        web['readinessProbe']['httpGet']['path'] = '/'
+        web['livenessProbe']['httpGet']['path'] = '/'
+        # Vite's dev server needs far more than the 128Mi nginx gets
+        web['resources']['limits'] = {'cpu': '1', 'memory': '512Mi'}
 
     if kind == 'Job' and name == 'openfx-migrate':
         # migrate-job.yaml uses the same image as the API (openfx:v1). If it
@@ -162,25 +169,43 @@ docker_build(
     'openfx-migrate',   # matches the image name set on the Job in section 1
     '.',
     dockerfile='Dockerfile',
-    only=['src', 'drizzle', 'package.json', 'package-lock.json',
-          'tsconfig.json', 'tsconfig.build.json', 'nest-cli.json'],
+    # Only DB code and dependencies: an ordinary API edit must NOT rebuild this
+    # image and re-run the Job
+    only=['src/db', 'drizzle', 'package.json', 'package-lock.json'],
 )
 
 
 # ---------------------------------------------------------------------------
-# 3. Build the website image (full rebuild on change)
+# 3. Build the website image, with live update
 # ---------------------------------------------------------------------------
 
-# The website is compiled by Vite into static files that nginx serves, so
-# there's nothing to live-patch. Any change rebuilds and reloads the image.
+# In the cluster the website normally is nginx serving a compiled bundle. For
+# development Tilt builds frontend/Dockerfile.dev instead, which runs Vite's dev
+# server. A saved file is copied in and Vite hot-reloads the page by itself.
 docker_build(
     # Matches `image: openfx-frontend:v1` in frontend.yaml
     'openfx-frontend',
     'frontend',
-    # Only the files that end up in the build (tests and node_modules left out)
-    only=['src', 'public', 'nginx', 'index.html',
-          'package.json', 'package-lock.json', 'vite.config.ts',
+    dockerfile='frontend/Dockerfile.dev',
+    # Only the files the dev server uses (tests and node_modules left out)
+    only=['src', 'public', 'index.html',
+          'package.json', 'package-lock.json',
+          'vite.config.ts', 'vite.config.tilt.ts',
           'tsconfig.json', 'tsconfig.app.json', 'tsconfig.node.json'],
+    live_update=[
+        # Config files can't be patched into the running dev server: full rebuild
+        fall_back_on(['frontend/vite.config.ts', 'frontend/vite.config.tilt.ts',
+                      'frontend/tsconfig.json', 'frontend/tsconfig.app.json',
+                      'frontend/tsconfig.node.json']),
+        # Source files: Vite notices and hot-reloads the browser
+        sync('frontend/src', '/app/src'),
+        sync('frontend/public', '/app/public'),
+        sync('frontend/index.html', '/app/index.html'),
+        # Dependencies: copy the manifests, then reinstall only when they changed
+        sync('frontend/package.json', '/app/package.json'),
+        sync('frontend/package-lock.json', '/app/package-lock.json'),
+        run('cd /app && npm ci', trigger=['frontend/package.json', 'frontend/package-lock.json']),
+    ],
 )
 
 
@@ -210,7 +235,7 @@ k8s_resource(
 k8s_resource(
     'openfx-frontend',
     resource_deps=['openfx-api'],
-    # localhost:8081 on the Mac -> nginx's port 8080 in the website container
+    # localhost:8081 on the Mac -> port 8080 in the website container (Vite in dev)
     port_forwards='8081:8080',
     labels=['frontend'],
 )

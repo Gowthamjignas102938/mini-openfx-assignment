@@ -1,0 +1,28 @@
+# Development-only image for the website, used by Tilt (see ../Tiltfile).
+# The real frontend/Dockerfile (Vite build + nginx) is untouched.
+#
+# Differences from the production Dockerfile:
+#   - runs Vite's dev server instead of nginx, so a saved file is hot-reloaded
+#     in the browser with no image rebuild
+#   - one stage, runs as root (files synced in from the Mac are always readable)
+
+FROM node:22-alpine
+WORKDIR /app
+
+# Dependency manifests first, so this slow layer is cached until they change
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# The rest of the source (.dockerignore keeps out node_modules, dist, .env).
+# Tilt keeps src/ in sync after startup.
+COPY . .
+
+# Same as the production image: the browser calls the API at "/v1" on the page's
+# own address. Vite's dev server forwards those calls (see vite.config.tilt.ts).
+ENV VITE_API_BASE_URL=/v1
+# Deliberately empty: the proxy adds the real key server-side
+ENV VITE_API_KEY=""
+
+# Same port as nginx, so the Service and containerPort in k8s/ still match
+EXPOSE 8080
+CMD ["node_modules/.bin/vite", "--config", "vite.config.tilt.ts"]
