@@ -15,7 +15,7 @@
 #   4. live-updates the API and the website: a changed source file is copied
 #      into the running container, and Nest's watch mode (API) or Vite's dev
 #      server (website) reloads it. No image rebuild. A changed dependency
-#      file runs `npm ci` in the container; a changed build config rebuilds.
+#      file runs `npm install` in the container; a changed build config rebuilds.
 #
 # The files in k8s/ are NOT changed. A few dev-only tweaks (1 replica, watch
 # command, higher limits, a separate image name for the migrate Job, keep the
@@ -141,18 +141,28 @@ docker_build(
         # Build config can't be patched into a running container, so do a full
         # image rebuild for these. (Dockerfile.dev itself always rebuilds.)
         # package.json and the lockfile are NOT here: they are handled below by
-        # running `npm ci` inside the container, which is faster.
+        # running `npm install` inside the container, which is faster.
         fall_back_on(['tsconfig.json', 'tsconfig.build.json', 'nest-cli.json']),
         # Copy changed files from the Mac into /app in the container.
         # For src/, Nest's watch mode notices, recompiles, and restarts the app.
         sync('src', '/app/src'),
         sync('package.json', '/app/package.json'),
         sync('package-lock.json', '/app/package-lock.json'),
-        # Reinstall dependencies, but ONLY when a dependency file changed.
-        run('cd /app && npm ci', trigger=['package.json', 'package-lock.json']),
-        # Watch mode only restarts on a change in src/, so after a reinstall
-        # touch a source file to make it recompile and pick up the new packages.
-        run('touch /app/src/main.ts', trigger=['package.json', 'package-lock.json']),
+        # Update dependencies, but ONLY when a dependency file changed.
+        # - `npm install`, not `npm ci`: npm ci deletes all of node_modules first,
+        #   including TypeScript itself, while Nest's watcher is still running.
+        #   The watcher then recompiles against half-deleted files and doesn't
+        #   recover. npm install only adds/removes the packages that changed.
+        # - --include=dev: the ConfigMap sets NODE_ENV=production, which would
+        #   otherwise make npm REMOVE TypeScript and the Nest CLI.
+        run('cd /app && npm install --include=dev --no-audit --no-fund',
+            trigger=['package.json', 'package-lock.json']),
+        # Watch mode only restarts when a file in src/ changes CONTENT (a plain
+        # `touch` is ignored). So write a tiny file with a fresh timestamp: Nest
+        # recompiles and restarts the app with the new packages loaded.
+        # This file only exists inside the container, never on the Mac.
+        run('echo "export const tiltRestartedAt = \\"$(date +%s)\\";" > /app/src/tilt-restart.ts',
+            trigger=['package.json', 'package-lock.json']),
     ],
 )
 
@@ -207,7 +217,10 @@ docker_build(
         # Dependencies: copy the manifests, then reinstall only when they changed
         sync('frontend/package.json', '/app/package.json'),
         sync('frontend/package-lock.json', '/app/package-lock.json'),
-        run('cd /app && npm ci', trigger=['frontend/package.json', 'frontend/package-lock.json']),
+        # npm install (not npm ci) so the running dev server never sees an empty
+        # node_modules; same reasoning as for the API above
+        run('cd /app && npm install --include=dev --no-audit --no-fund',
+            trigger=['frontend/package.json', 'frontend/package-lock.json']),
     ],
 )
 
