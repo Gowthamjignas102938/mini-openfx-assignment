@@ -146,7 +146,7 @@ Problems 4–6 went unnoticed until the dependency-change measurement was run. T
   - The container's copy of `package-lock.json` isn't synced back to the Mac.
   - **Commit the lockfile you generated on the Mac.** When in doubt, run `tilt trigger openfx-api` to force a full rebuild from the image's clean `npm ci`.
 - **Dependency timing depends on the network.** `npm install` fetches from the npm registry, which explains the 7.6s outlier.
-- **Hot reload through the port-forward.** Vite's module serving was timed, not an actual browser repaint over the HMR websocket. It's worth a quick manual check on each developer's machine.
+- **Hot reload through the port-forward: verified in Chrome (2026-10-01).** With the Balances tab open, editing the heading in `App.tsx` updated the page **720 ms** after the save. The page didn't reload: the selected tab and a JS marker on the page both survived, and the console logged `[vite] hot updated: /src/App.tsx` with no errors. Worth a quick check on each developer's machine all the same.
 - **Scaling to more services and developers.**
   - Every developer runs their own cluster. The Tiltfile hard-codes the context name `k3d-openfx-dev`, so everyone has to create the cluster with that exact name, or the check needs to become configurable.
   - Each new service needs its own `docker_build` and `live_update` block. A service without a watching dev server needs the `restart_process` extension instead.
